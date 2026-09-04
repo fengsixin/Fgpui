@@ -23,6 +23,8 @@ thiserror = "2"
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
+rusqlite = { version = "0.37", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"

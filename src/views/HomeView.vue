@@ -169,8 +169,11 @@ const severityMap: Record<string, string> = {
                 <pre class="mono">{{ store.smokeErrorRaw.stderr }}</pre>
               </details>
             </template>
-            <template v-else-if="store.smokeErrorRaw?.stderr">
-              <details class="stderr-box">
+            <template v-else>
+              <div v-if="store.smokeErrorRaw?.detail" class="mono detail-box">
+                {{ store.smokeErrorRaw.detail }}
+              </div>
+              <details v-if="store.smokeErrorRaw?.stderr" class="stderr-box">
                 <summary>完整编译器输出</summary>
                 <pre class="mono">{{ store.smokeErrorRaw.stderr }}</pre>
               </details>

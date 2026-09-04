@@ -37,6 +37,30 @@ pub enum AppError {
         message: String,
         timeout_secs: u64,
     },
+    /// 本地 SQLite 索引损坏，需要重建（文件层 project.json 是事实来源）。
+    #[error("{message}")]
+    DbCorrupted {
+        message: String,
+        detail: String,
+    },
+    /// 项目不存在（索引无记录）。
+    #[error("{message}")]
+    ProjectNotFound {
+        message: String,
+        detail: String,
+    },
+    /// 索引有记录但项目文件缺失（可重建索引或删除残留）。
+    #[error("{message}")]
+    ProjectFilesMissing {
+        message: String,
+        detail: String,
+    },
+    /// 输入校验失败。
+    #[error("{message}")]
+    Validation {
+        message: String,
+        detail: String,
+    },
     /// 文件系统 / 进程 IO 错误。
     #[error("{message}")]
     Io {
@@ -85,6 +109,34 @@ impl AppError {
         }
     }
 
+    pub fn db_corrupted(detail: impl Into<String>) -> Self {
+        Self::DbCorrupted {
+            message: "本地项目索引数据库损坏".into(),
+            detail: detail.into(),
+        }
+    }
+
+    pub fn project_not_found(id: impl std::fmt::Display) -> Self {
+        Self::ProjectNotFound {
+            message: format!("项目不存在或已被删除（{id}）"),
+            detail: "项目可能已被手动删除目录，可在项目管理页刷新列表".into(),
+        }
+    }
+
+    pub fn project_files_missing(id: impl std::fmt::Display) -> Self {
+        Self::ProjectFilesMissing {
+            message: format!("项目文件缺失：projects/{id}/project.json 不存在"),
+            detail: "可重建索引（从文件恢复目录列表）或删除该残留项目".into(),
+        }
+    }
+
+    pub fn validation(detail: impl Into<String>) -> Self {
+        Self::Validation {
+            message: detail.into(),
+            detail: String::new(),
+        }
+    }
+
     pub fn io(context: impl Into<String>, err: impl std::fmt::Display) -> Self {
         Self::Io {
             message: format!("{}：{}", context.into(), err),
@@ -120,6 +172,10 @@ impl AppError {
             Self::TypstVersionCheckFailed { .. } => "typst_version_check_failed",
             Self::CompileFailed { .. } => "compile_failed",
             Self::CompileTimeout { .. } => "compile_timeout",
+            Self::DbCorrupted { .. } => "db_corrupted",
+            Self::ProjectNotFound { .. } => "project_not_found",
+            Self::ProjectFilesMissing { .. } => "project_files_missing",
+            Self::Validation { .. } => "validation",
             Self::Io { .. } => "io",
             Self::Internal { .. } => "internal",
         }

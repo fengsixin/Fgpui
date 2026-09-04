@@ -37,9 +37,15 @@ pub struct SmokeTestResult {
 }
 
 /// 创建临时冒烟测试目录。
+/// 注意：不要用 chrono 的 `%-3f` 等组合说明符——遇到无法格式化的项
+/// chrono 的 Display 会返回 fmt::Error，在 format! 中直接 panic。
 fn smoke_dir() -> AppResult<PathBuf> {
-    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S%-3f");
-    let dir = std::env::temp_dir().join(format!("fgpui-smoke-{stamp}"));
+    let now = chrono::Local::now();
+    let dir = std::env::temp_dir().join(format!(
+        "fgpui-smoke-{}-{}",
+        now.format("%Y%m%d-%H%M%S"),
+        now.timestamp_subsec_nanos()
+    ));
     std::fs::create_dir_all(&dir)
         .map_err(|e| AppError::io(format!("创建冒烟测试目录失败 {}", dir.display()), e))?;
     Ok(dir)
@@ -96,7 +102,7 @@ pub async fn check_typst() -> TypstStatus {
 /// 编译内置 hello 模板生成 PDF（冒烟测试）。
 #[tauri::command]
 pub async fn run_typst_smoke_test() -> AppResult<SmokeTestResult> {
-    tauri::async_runtime::spawn_blocking(|| -> AppResult<SmokeTestResult> {
+    let joined = tauri::async_runtime::spawn_blocking(|| -> AppResult<SmokeTestResult> {
         let exe = typst::resolve_typst_exe()?;
         let version = typst::version(&exe).unwrap_or_else(|_| "unknown".to_string());
         info!(exe = %exe.display(), %version, "开始 Typst 冒烟编译");
@@ -117,8 +123,18 @@ pub async fn run_typst_smoke_test() -> AppResult<SmokeTestResult> {
             typst_version: version,
         })
     })
-    .await
-    .map_err(|e| AppError::internal_detail("冒烟测试任务调度失败", e.to_string()))?
+    .await;
+    match joined {
+        Ok(inner) => inner,
+        Err(join_err) => {
+            // 任务 panic / 取消：记录完整 JoinError 并把详情带给前端
+            tracing::error!(error = %join_err, "冒烟测试任务调度失败");
+            Err(AppError::internal_detail(
+                "冒烟测试任务调度失败",
+                join_err.to_string(),
+            ))
+        }
+    }
 }
 
 /// 在资源管理器中定位文件（Windows）。
@@ -150,5 +166,17 @@ mod tests {
     fn hello_typ_resource_is_valid_utf8_typ() {
         assert!(HELLO_TYP.contains("#set page"));
         assert!(HELLO_TYP.starts_with("//"));
+    }
+
+    #[test]
+    fn smoke_dir_creates_unique_valid_dir() {
+        let a = smoke_dir().expect("创建冒烟目录失败");
+        assert!(a.is_dir());
+        assert!(a.to_string_lossy().contains("fgpui-smoke-"));
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let b = smoke_dir().expect("创建冒烟目录 2 失败");
+        assert_ne!(a, b, "两次调用应产生不同目录（时间戳唯一性）");
+        let _ = std::fs::remove_dir_all(&a);
+        let _ = std::fs::remove_dir_all(&b);
     }
 }

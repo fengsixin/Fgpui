@@ -20,6 +20,10 @@ const envOk = computed(() => appStore.typstStatus?.ok === true)
           <span class="app-subname">单机标准文档生成工具</span>
         </div>
       </div>
+      <el-menu mode="horizontal" router :default-active="route.path" class="app-nav" :ellipsis="false">
+        <el-menu-item index="/">项目管理</el-menu-item>
+        <el-menu-item index="/env">环境自检</el-menu-item>
+      </el-menu>
       <div class="app-header-right">
         <el-tag v-if="phaseTitle" type="info" effect="plain" size="large">{{ phaseTitle }}</el-tag>
         <el-tooltip
@@ -94,6 +98,18 @@ const envOk = computed(() => appStore.typstStatus?.ok === true)
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.app-nav {
+  flex: 1;
+  margin-left: 16px;
+  border-bottom: none !important;
+  background: transparent;
+}
+
+.app-nav .el-menu-item {
+  height: 55px;
+  line-height: 55px;
 }
 
 .app-main {

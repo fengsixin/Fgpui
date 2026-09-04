@@ -40,7 +40,14 @@ pub fn documents_dir() -> AppResult<PathBuf> {
 }
 
 /// Fgpui 工作区根目录。
+/// 支持环境变量 `FGPU_WORKSPACE_DIR` 覆盖（测试 / 多工作区场景）。
 pub fn workspace_root() -> AppResult<PathBuf> {
+    if let Ok(dir) = std::env::var("FGPU_WORKSPACE_DIR") {
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
     Ok(documents_dir()?.join("FgpuiDocuments"))
 }
 

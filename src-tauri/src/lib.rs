@@ -3,9 +3,11 @@
 //! 阶段 0 范围：统一错误结构、日志结构、Typst CLI sidecar 封装与编译自检。
 
 pub mod commands;
+pub mod db;
 pub mod error;
 pub mod logging;
 pub mod paths;
+pub mod project;
 pub mod typst;
 
 use tracing::info;
@@ -43,6 +45,13 @@ pub fn run() {
             commands::dev::check_typst,
             commands::dev::run_typst_smoke_test,
             commands::dev::reveal_in_explorer,
+            commands::projects::create_project,
+            commands::projects::list_projects,
+            commands::projects::open_project,
+            commands::projects::save_project,
+            commands::projects::delete_project,
+            commands::projects::rebuild_project_index,
+            commands::projects::get_workspace_info,
         ])
         .run(tauri::generate_context!())
         .expect("Fgpui 应用运行失败");
