@@ -20,7 +20,7 @@ Windows 优先的单机桌面应用：选择文档模板 → 填写表单或导�
 ```text
 C:\code\Fgpui\
 ├── 1.md                  # 开发计划（原始需求）
-├── typst.exe             # Typst 0.15.1 固定基线（版本唯一来源）
+├── typst.exe             # Typst 0.15.1 固定基线（本地文件，不入版本库；由 setup-typst.ps1 接入 sidecar）
 ├── package.json          # 前端依赖与脚本
 ├── vite.config.ts
 ├── src\                  # Vue 3 前端
