@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/appStore'
 
@@ -8,6 +8,11 @@ const appStore = useAppStore()
 
 const phaseTitle = computed(() => route.meta.phaseTitle as string | undefined)
 const envOk = computed(() => appStore.typstStatus?.ok === true)
+
+// 应用启动即做一次 Typst 环境自检（顶栏状态不再依赖环境自检页）
+onMounted(() => {
+  void appStore.refreshTypstStatus()
+})
 </script>
 
 <template>
