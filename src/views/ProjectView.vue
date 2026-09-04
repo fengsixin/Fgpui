@@ -97,6 +97,7 @@ const saveStateType = computed(() => {
         <el-tag type="info" effect="plain">模板 {{ store.current.project.templateVersion }}</el-tag>
       </template>
       <div class="topbar-spacer" />
+      <el-tag v-if="store.current && !jsonValid" type="warning" effect="dark">JSON 格式错误，已暂停保存</el-tag>
       <el-tag v-if="store.current" :type="(saveStateType as any)" effect="dark">{{ saveStateText }}</el-tag>
     </div>
 

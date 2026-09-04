@@ -57,6 +57,7 @@ pub fn save_project_core(root: &Path, id: &str, data: Value) -> AppResult<Projec
     let meta = db.get_project(id)?;
     let updated = project::save_data(root, &meta, &data)?;
     db.upsert_project(&updated)?;
+    tracing::info!(id, "项目数据已保存");
     Ok(updated)
 }
 

@@ -78,7 +78,8 @@ export const useProjectsStore = defineStore('projects', () => {
     saving.value = true
     try {
       const updated = await api.saveProject(current.value.project.id, data)
-      current.value = { ...current.value, project: updated }
+      // 同步更新 project 与 data，避免 canonical 比对漂移导致重复保存
+      current.value = { project: updated, data }
       lastSavedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
       saveError.value = null
     } catch (err) {
