@@ -1,0 +1,33 @@
+[package]
+name = "fgpui"
+version = "0.1.0"
+description = "Fgpui 单机标准文档生成工具"
+authors = ["Fgpui"]
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "fgpui_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = false
+codegen-units = 16
