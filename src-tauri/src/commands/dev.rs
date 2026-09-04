@@ -4,7 +4,7 @@
 //! - `run_typst_smoke_test`：编译内置 hello 模板，验证完整链路
 //! - `reveal_in_explorer`：在资源管理器中定位文件
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::Serialize;
 use tracing::info;
@@ -13,7 +13,7 @@ use crate::error::{AppError, AppResult};
 use crate::typst::{self, Diagnostic};
 
 /// 内置测试模板（随二进制编译进程序，避免外部资源缺失）。
-const HELLO_TYP: &str = include_str!("../resources/hello.typ");
+const HELLO_TYP: &str = include_str!("../../resources/hello.typ");
 
 /// Typst 环境检查结果。
 #[derive(Debug, Serialize)]

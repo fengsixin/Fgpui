@@ -8,7 +8,9 @@ rust-version = "1.85"
 
 [lib]
 name = "fgpui_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# 仅桌面端：保留 rlib 即可。cdylib/staticlib 会在 windows-gnu 下
+# 触发 DLL 导出序号上限（export ordinal too large）链接错误。
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

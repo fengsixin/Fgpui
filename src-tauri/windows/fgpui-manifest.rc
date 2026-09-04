@@ -1,0 +1,5 @@
+// RT_MANIFEST 资源 ID = 2：
+// - bin 目标已由 tauri-build 嵌入 ID 1 的完整应用清单，加载器优先使用 ID 1；
+// - test 目标没有 ID 1，加载器按 1 -> 2 -> 3 顺序探测，因此本清单对测试同样生效。
+// 作用：声明 Common-Controls v6，使 TaskDialogIndirect 等 v6 专属入口可解析。
+2 24 "fgpui-manifest.xml"

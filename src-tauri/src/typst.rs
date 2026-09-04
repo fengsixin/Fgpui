@@ -134,7 +134,7 @@ pub fn compile(
         match child.try_wait().map_err(AppError::from)? {
             Some(status) => break status,
             None => {
-                if wait_start >= timeout {
+                if wait_start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
                     return Err(AppError::compile_timeout(timeout.as_secs()));
@@ -147,7 +147,6 @@ pub fn compile(
     let out = child
         .wait_with_output()
         .map_err(|e| AppError::io("读取 Typst 进程输出失败".to_string(), e))?;
-    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
     let diagnostics = parse_diagnostics(&stderr);
 

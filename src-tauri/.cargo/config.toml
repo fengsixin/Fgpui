@@ -2,3 +2,11 @@
 # Fgpui 固定使用 windows-gnu 工具链构建（本机未安装 MSVC Build Tools，
 # 已验证 mingw64 工具链可正常链接；Tauri/wry/webview2-com 支持 windows-gnu 目标）。
 target = "x86_64-pc-windows-gnu"
+
+[http]
+# 防止个别连接挂起导致 cargo 长时间无响应
+timeout = 60
+multiplexing = false
+
+[net]
+retry = 3
