@@ -3,7 +3,10 @@ import type {
   Project,
   ProjectDetail,
   ProjectSummary,
+  SchemaIssue,
   SmokeTestResult,
+  TemplateInfo,
+  TemplateManifest,
   TypstStatus,
   WorkspaceInfo,
 } from './types'
@@ -27,9 +30,9 @@ export function revealInExplorer(path: string): Promise<void> {
 
 // ---------- 阶段 1：项目管理 ----------
 
-/** 创建项目（名称 + 文档类型） */
-export function createProject(name: string, documentType: string): Promise<Project> {
-  return invoke('create_project', { name, documentType })
+/** 创建项目（名称 + 模板；模板版本自动记录自 manifest） */
+export function createProject(name: string, templateId: string): Promise<Project> {
+  return invoke('create_project', { name, templateId })
 }
 
 /** 最近项目列表（按更新时间倒序，附完整性标记） */
@@ -60,4 +63,34 @@ export function rebuildProjectIndex(): Promise<number> {
 /** 工作区目录信息 */
 export function getWorkspaceInfo(): Promise<WorkspaceInfo> {
   return invoke('get_workspace_info')
+}
+
+// ---------- 阶段 2：模板与 Schema ----------
+
+/** 扫描模板目录（含损坏包与错误说明） */
+export function listTemplates(): Promise<TemplateInfo[]> {
+  return invoke('list_templates')
+}
+
+/** 读取模板 JSON Schema */
+export function getTemplateSchema(templateId: string): Promise<Record<string, unknown>> {
+  return invoke('get_template_schema', { templateId })
+}
+
+/** 读取模板示例数据 */
+export function getTemplateSample(templateId: string): Promise<Record<string, unknown>> {
+  return invoke('get_template_sample', { templateId })
+}
+
+/** 导入模板包（本地目录路径） */
+export function importTemplate(sourcePath: string): Promise<TemplateManifest> {
+  return invoke('import_template', { sourcePath })
+}
+
+/** 用模板 Schema 校验文档数据 */
+export function validateDocumentData(
+  templateId: string,
+  data: Record<string, unknown>,
+): Promise<SchemaIssue[]> {
+  return invoke('validate_document_data', { templateId, data })
 }

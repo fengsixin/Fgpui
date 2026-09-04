@@ -1,6 +1,7 @@
 //! Tauri commands（对外接口）。
 pub mod dev;
 pub mod projects;
+pub mod templates;
 
 use crate::error::AppError;
 

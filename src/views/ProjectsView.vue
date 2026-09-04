@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Delete, Folder, MagicStick, Plus, Refresh } from '@element-plus/icons-vue'
+import { Delete, Folder, MagicStick, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { formatAppError } from '@/stores/appStore'
@@ -13,11 +13,23 @@ const store = useProjectsStore()
 const createVisible = ref(false)
 const creating = ref(false)
 const rebuilding = ref(false)
-const form = ref({ name: '', documentType: 'technical-design' })
+const importing = ref(false)
+const form = ref({ name: '', templateId: 'technical-design' })
+
+/** 可用模板（有效包） */
+const availableTemplates = computed(() =>
+  store.templates.filter((t) => t.manifest && !t.error),
+)
 
 onMounted(() => {
   void store.refreshList()
   void store.loadWorkspaceInfo()
+  void store.refreshTemplates()
+})
+
+// 每次打开新建对话框时重新扫描模板（新导入的模板即刻可用）
+watch(createVisible, (visible) => {
+  if (visible) void store.refreshTemplates()
 })
 
 function fmtDate(iso: string | null | undefined): string {
@@ -36,11 +48,15 @@ async function submitCreate(): Promise<void> {
     ElMessage.warning('请输入项目名称')
     return
   }
+  if (!form.value.templateId) {
+    ElMessage.warning('请选择模板')
+    return
+  }
   creating.value = true
   try {
-    const created = await store.createProject(form.value.name, form.value.documentType)
+    const created = await store.createProject(form.value.name, form.value.templateId)
     createVisible.value = false
-    form.value = { name: '', documentType: 'technical-design' }
+    form.value = { name: '', templateId: form.value.templateId }
     ElMessage.success('项目已创建')
     void router.push(`/project/${created.id}`)
   } catch (err) {
@@ -59,6 +75,26 @@ async function rebuild(): Promise<void> {
     ElMessage.error(formatAppError(err))
   } finally {
     rebuilding.value = false
+  }
+}
+
+async function importTemplate(): Promise<void> {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '输入模板包目录的完整路径（目录内需含 manifest.json）',
+      '导入模板包',
+      { inputPlaceholder: 'D:\\tpl\\my-template' },
+    )
+    if (!value?.trim()) return
+    importing.value = true
+    await store.importTemplate(value.trim())
+    ElMessage.success('模板已导入')
+  } catch (err) {
+    if (err !== 'cancel' && err !== 'close') {
+      ElMessage.error(formatAppError(err))
+    }
+  } finally {
+    importing.value = false
   }
 }
 
@@ -88,6 +124,9 @@ function showWorkspacePath(): void {
           <el-button :icon="Refresh" :loading="store.listLoading" @click="store.refreshList()">刷新</el-button>
           <el-tooltip content="项目文件是事实来源：数据库损坏或索引缺失时，从 projects 目录的 project.json 恢复索引" placement="bottom">
             <el-button :icon="MagicStick" :loading="rebuilding" @click="rebuild">重建索引</el-button>
+          </el-tooltip>
+          <el-tooltip content="从本地目录导入模板包（目录内需含 manifest.json）" placement="bottom">
+            <el-button :icon="Upload" :loading="importing" @click="importTemplate">导入模板</el-button>
           </el-tooltip>
         </div>
         <el-tag
@@ -128,6 +167,11 @@ function showWorkspacePath(): void {
         <el-table-column label="文档类型" width="140">
           <template #default="{ row }">{{ docTypeText(row.documentType) }}</template>
         </el-table-column>
+        <el-table-column label="模板版本" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain">{{ row.templateVersion }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="创建时间" width="180">
           <template #default="{ row }">{{ fmtDate(row.createdAt) }}</template>
         </el-table-column>
@@ -167,7 +211,7 @@ function showWorkspacePath(): void {
       </el-table>
     </el-card>
 
-    <el-dialog v-model="createVisible" title="新建项目" width="460px">
+    <el-dialog v-model="createVisible" title="新建项目" width="480px">
       <el-form label-width="90px" @submit.prevent>
         <el-form-item label="项目名称" required>
           <el-input
@@ -178,11 +222,23 @@ function showWorkspacePath(): void {
             @keyup.enter="submitCreate"
           />
         </el-form-item>
-        <el-form-item label="文档类型" required>
-          <el-select v-model="form.documentType" style="width: 100%">
-            <el-option label="技术方案" value="technical-design" />
-            <el-option label="测试报告" value="test-report" />
+        <el-form-item label="文档模板" required>
+          <el-select
+            v-model="form.templateId"
+            :loading="store.templatesLoading"
+            style="width: 100%"
+            placeholder="选择模板"
+          >
+            <el-option
+              v-for="t in availableTemplates"
+              :key="t.manifest!.id"
+              :label="`${t.manifest!.name}（${t.manifest!.version}）`"
+              :value="t.manifest!.id"
+            />
           </el-select>
+          <div v-if="!availableTemplates.length" class="tpl-empty">
+            未发现可用模板，请检查工作区 templates 目录或使用「导入模板」。
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -214,6 +270,7 @@ function showWorkspacePath(): void {
   display: flex;
   align-items: center;
   gap: 0;
+  flex-wrap: wrap;
 }
 
 .ws-tag {
@@ -225,5 +282,11 @@ function showWorkspacePath(): void {
 
 .db-alert {
   margin-bottom: 2px;
+}
+
+.tpl-empty {
+  font-size: 12px;
+  color: var(--el-color-danger);
+  margin-top: 4px;
 }
 </style>

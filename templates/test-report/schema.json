@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "测试报告",
+  "required": ["title", "author", "conclusion"],
+  "properties": {
+    "title": { "type": "string", "title": "报告标题", "minLength": 1 },
+    "author": { "type": "string", "title": "测试负责人", "minLength": 1 },
+    "version": { "type": "string", "title": "报告版本", "default": "V1.0" },
+    "date": { "type": "string", "title": "报告日期" },
+    "classification": { "type": "string", "title": "密级", "enum": ["公开", "内部", "秘密"], "default": "内部" },
+    "scope": { "type": "string", "title": "测试范围", "format": "textarea" },
+    "environment": {
+      "type": "object",
+      "title": "测试环境",
+      "properties": {
+        "os": { "type": "string", "title": "操作系统" },
+        "tools": { "type": "array", "title": "测试工具", "items": { "type": "string" } },
+        "notes": { "type": "string", "title": "环境说明", "format": "textarea" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "title": "测试用例",
+      "items": {
+        "type": "object",
+        "title": "用例",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "title": "用例编号", "minLength": 1 },
+          "name": { "type": "string", "title": "用例名称", "minLength": 1 },
+          "expected": { "type": "string", "title": "预期结果" },
+          "actual": { "type": "string", "title": "实际结果" },
+          "status": { "type": "string", "title": "状态", "enum": ["通过", "失败", "阻塞", "未执行"], "default": "通过" },
+          "remark": { "type": "string", "title": "备注" }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "title": "问题清单",
+      "items": {
+        "type": "object",
+        "title": "问题",
+        "required": ["id", "summary"],
+        "properties": {
+          "id": { "type": "string", "title": "问题编号", "minLength": 1 },
+          "severity": { "type": "string", "title": "严重程度", "enum": ["致命", "严重", "一般", "轻微"], "default": "一般" },
+          "summary": { "type": "string", "title": "问题描述", "minLength": 1 },
+          "status": { "type": "string", "title": "处理状态", "enum": ["打开", "修复中", "已关闭", "延期"], "default": "打开" }
+        }
+      }
+    },
+    "conclusion": { "type": "string", "title": "测试结论", "format": "textarea", "minLength": 1 }
+  }
+}

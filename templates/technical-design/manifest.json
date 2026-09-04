@@ -1,0 +1,10 @@
+{
+  "id": "technical-design",
+  "name": "技术方案",
+  "version": "1.0.0",
+  "description": "软件项目技术方案文档模板（含多级章节、表格、图片）",
+  "entry": "main.typ",
+  "schema": "schema.json",
+  "sample": "examples/sample.json",
+  "required_fonts": ["Microsoft YaHei"]
+}

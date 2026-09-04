@@ -8,6 +8,8 @@ pub mod error;
 pub mod logging;
 pub mod paths;
 pub mod project;
+pub mod schema;
+pub mod templates;
 pub mod typst;
 
 use tracing::info;
@@ -39,6 +41,19 @@ pub fn run() {
     }
     info!(version = env!("CARGO_PKG_VERSION"), "Fgpui 启动");
 
+    // 同步内置模板包到工作区（不覆盖已存在的包）
+    if let Ok(root) = paths::workspace_root() {
+        let templates_root = templates::templates_dir(&root);
+        if let Err(e) = std::fs::create_dir_all(&templates_root) {
+            tracing::warn!("模板目录创建失败: {e}");
+        }
+        match templates::sync_bundled_templates(templates::locate_bundled_templates().as_deref(), &templates_root) {
+            Ok(n) if n > 0 => info!(count = n, "已同步内置模板到工作区"),
+            Ok(_) => {}
+            Err(e) => tracing::warn!("内置模板同步失败: {e}"),
+        }
+    }
+
     // 3) 启动 Tauri 应用
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -52,6 +67,11 @@ pub fn run() {
             commands::projects::delete_project,
             commands::projects::rebuild_project_index,
             commands::projects::get_workspace_info,
+            commands::templates::list_templates,
+            commands::templates::get_template_schema,
+            commands::templates::get_template_sample,
+            commands::templates::import_template,
+            commands::templates::validate_document_data,
         ])
         .run(tauri::generate_context!())
         .expect("Fgpui 应用运行失败");

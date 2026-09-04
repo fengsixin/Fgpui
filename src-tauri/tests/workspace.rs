@@ -1,4 +1,4 @@
-//! 阶段 1 集成测试：项目生命周期、删除隔离、损坏恢复、残留识别。
+//! 阶段 1/2 集成测试：项目生命周期、删除隔离、损坏恢复、残留识别、模板版本记录。
 
 use serde_json::json;
 
@@ -11,12 +11,31 @@ fn temp_ws() -> (tempfile::TempDir, std::path::PathBuf) {
     (dir, root)
 }
 
+/// 在工作区写入一个最小可用的模板包。
+fn seed_template(root: &std::path::Path, id: &str, version: &str) {
+    let dir = root.join("templates").join(id);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("manifest.json"),
+        format!(
+            r#"{{"id":"{id}","name":"{id} 模板","version":"{version}","entry":"main.typ","schema":"schema.json"}}"#
+        ),
+    )
+    .unwrap();
+    std::fs::write(dir.join("schema.json"), r#"{"type":"object"}"#).unwrap();
+    std::fs::write(dir.join("main.typ"), "// test entry").unwrap();
+}
+
 #[test]
 fn project_lifecycle_roundtrip() {
     let (_guard, root) = temp_ws();
+    seed_template(&root, "technical-design", "1.2.0");
 
-    // 创建
-    let created = pc::create_project_core(&root, "测试方案 A".into(), "technical-design".into()).unwrap();
+    // 创建（模板版本来自 manifest）
+    let created =
+        pc::create_project_core(&root, "测试方案 A".into(), "technical-design".into()).unwrap();
+    assert_eq!(created.template_version, "1.2.0", "项目应记录模板 manifest 版本");
+    assert_eq!(created.document_type, "technical-design");
     let project_dir = root.join("projects").join(&created.id);
     assert!(project_dir.join("project.json").is_file());
     assert!(project_dir.join("data.json").is_file());
@@ -51,6 +70,7 @@ fn project_lifecycle_roundtrip() {
 #[test]
 fn delete_project_keeps_templates_and_fonts() {
     let (_guard, root) = temp_ws();
+    seed_template(&root, "test-report", "1.0.0");
 
     std::fs::create_dir_all(root.join("templates")).unwrap();
     std::fs::write(root.join("templates").join("tpl.json"), "{}").unwrap();
@@ -62,6 +82,10 @@ fn delete_project_keeps_templates_and_fonts() {
 
     assert!(!root.join("projects").join(&created.id).exists(), "项目目录应被删除");
     assert!(root.join("templates").join("tpl.json").is_file(), "模板不能被误删");
+    assert!(
+        root.join("templates").join("test-report").is_dir(),
+        "模板包不能被误删"
+    );
     assert!(root.join("fonts").join("CompanySans.ttf").is_file(), "字体不能被误删");
     assert!(pc::list_projects_core(&root).unwrap().is_empty());
 }
@@ -69,6 +93,8 @@ fn delete_project_keeps_templates_and_fonts() {
 #[test]
 fn corrupted_db_is_detected_and_rebuildable() {
     let (_guard, root) = temp_ws();
+    seed_template(&root, "technical-design", "1.0.0");
+    seed_template(&root, "test-report", "1.0.0");
 
     let p1 = pc::create_project_core(&root, "项目一".into(), "technical-design".into()).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -99,6 +125,7 @@ fn corrupted_db_is_detected_and_rebuildable() {
 #[test]
 fn missing_project_files_are_reported() {
     let (_guard, root) = temp_ws();
+    seed_template(&root, "technical-design", "1.0.0");
 
     let created = pc::create_project_core(&root, "残留项目".into(), "technical-design".into()).unwrap();
     std::fs::remove_file(root.join("projects").join(&created.id).join("project.json")).unwrap();
@@ -113,6 +140,7 @@ fn missing_project_files_are_reported() {
 #[test]
 fn validation_rejects_bad_input() {
     let (_guard, root) = temp_ws();
+    seed_template(&root, "technical-design", "1.0.0");
 
     let err = pc::create_project_core(&root, "   ".into(), "technical-design".into()).unwrap_err();
     assert_eq!(err.kind(), "validation");
@@ -122,15 +150,19 @@ fn validation_rejects_bad_input() {
 
     let err = pc::open_project_core(&root, "../../evil").unwrap_err();
     assert_eq!(err.kind(), "validation");
+
+    // 模板不存在 → template_not_found
+    let err = pc::create_project_core(&root, "无模板项目".into(), "no-such-template".into()).unwrap_err();
+    assert_eq!(err.kind(), "template_not_found");
 }
 
 #[test]
 fn missing_data_json_recovers_as_empty() {
     let (_guard, root) = temp_ws();
+    seed_template(&root, "technical-design", "1.0.0");
     let created = pc::create_project_core(&root, "数据缺失恢复".into(), "technical-design".into()).unwrap();
     std::fs::remove_file(root.join("projects").join(&created.id).join("data.json")).unwrap();
 
-    // data.json 缺失不致命：按空对象恢复（project.json 仍在）
     let detail = pc::open_project_core(&root, &created.id).unwrap();
     assert_eq!(detail.data, json!({}));
 }

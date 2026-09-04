@@ -1,0 +1,52 @@
+{
+  "title": "XX 管理平台一期测试报告",
+  "author": "测试组 / 王工",
+  "version": "V1.0",
+  "date": "2026-09-04",
+  "classification": "内部",
+  "scope": "覆盖一期范围内的登录、订单、支付核心链路功能测试与兼容性测试。",
+  "environment": {
+    "os": "Windows 11 / Windows Server 2022",
+    "tools": ["JMeter 5.6", "Selenium 4", "Postman"],
+    "notes": "测试网段与生产隔离，数据均为脱敏数据。"
+  },
+  "cases": [
+    {
+      "id": "TC-001",
+      "name": "账号密码登录",
+      "expected": "登录成功进入工作台",
+      "actual": "与预期一致",
+      "status": "通过"
+    },
+    {
+      "id": "TC-014",
+      "name": "订单并发提交",
+      "expected": "无丢单",
+      "actual": "高并发下 2 笔超时",
+      "status": "失败",
+      "remark": "见问题 ISS-003"
+    },
+    {
+      "id": "TC-020",
+      "name": "发票导出",
+      "expected": "导出 PDF",
+      "actual": "—",
+      "status": "阻塞"
+    }
+  ],
+  "issues": [
+    {
+      "id": "ISS-001",
+      "severity": "一般",
+      "summary": "登录页在低分辨率下错位",
+      "status": "已关闭"
+    },
+    {
+      "id": "ISS-003",
+      "severity": "严重",
+      "summary": "订单并发提交超时丢单",
+      "status": "修复中"
+    }
+  ],
+  "conclusion": "核心链路功能符合需求；订单并发问题需修复后回归，建议修复完成后进入第二轮回归测试。"
+}

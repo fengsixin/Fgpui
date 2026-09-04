@@ -1,0 +1,10 @@
+{
+  "id": "test-report",
+  "name": "测试报告",
+  "version": "1.0.0",
+  "description": "软件测试报告模板（测试范围、环境、用例、问题清单、结论）",
+  "entry": "main.typ",
+  "schema": "schema.json",
+  "sample": "examples/sample.json",
+  "required_fonts": ["Microsoft YaHei"]
+}

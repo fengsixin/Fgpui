@@ -55,6 +55,18 @@ pub enum AppError {
         message: String,
         detail: String,
     },
+    /// 模板不存在（未导入 / 未同步）。
+    #[error("{message}")]
+    TemplateNotFound {
+        message: String,
+        detail: String,
+    },
+    /// 模板包无效（manifest 缺失或损坏、引用文件缺失）。
+    #[error("{message}")]
+    TemplateInvalid {
+        message: String,
+        detail: String,
+    },
     /// 输入校验失败。
     #[error("{message}")]
     Validation {
@@ -137,6 +149,20 @@ impl AppError {
         }
     }
 
+    pub fn template_not_found(id: impl std::fmt::Display) -> Self {
+        Self::TemplateNotFound {
+            message: format!("模板不存在：{id}"),
+            detail: "请确认模板包已放置/导入到工作区 templates 目录".into(),
+        }
+    }
+
+    pub fn template_invalid(detail: impl Into<String>) -> Self {
+        Self::TemplateInvalid {
+            message: "模板包无效".into(),
+            detail: detail.into(),
+        }
+    }
+
     pub fn io(context: impl Into<String>, err: impl std::fmt::Display) -> Self {
         Self::Io {
             message: format!("{}：{}", context.into(), err),
@@ -175,6 +201,8 @@ impl AppError {
             Self::DbCorrupted { .. } => "db_corrupted",
             Self::ProjectNotFound { .. } => "project_not_found",
             Self::ProjectFilesMissing { .. } => "project_files_missing",
+            Self::TemplateNotFound { .. } => "template_not_found",
+            Self::TemplateInvalid { .. } => "template_invalid",
             Self::Validation { .. } => "validation",
             Self::Io { .. } => "io",
             Self::Internal { .. } => "internal",

@@ -13,17 +13,23 @@ use crate::paths::{self, WorkspaceDirs};
 use crate::project::{
     self, ProjectDetail, ProjectMeta, ProjectSummary,
 };
+use crate::templates;
 
 // ---------- 核心逻辑（可测试） ----------
 
-pub fn create_project_core(root: &Path, name: String, document_type: String) -> AppResult<ProjectMeta> {
+pub fn create_project_core(root: &Path, name: String, template_id: String) -> AppResult<ProjectMeta> {
+    project::validate_project_id(&template_id)?;
     let name = project::validate_project_name(&name)?;
-    let document_type = project::validate_project_name(&document_type)?;
-    let meta = ProjectMeta::new(name, document_type);
+    // 模板必须存在：项目版本号来自模板 manifest（可追溯的基础）
+    let (template_dir, manifest) = templates::get_template_by_id(&templates::templates_dir(root), &template_id)?;
+    crate::schema::ensure_schema_compiles(&templates::read_schema(&template_dir, &manifest)?)?;
+
+    let mut meta = ProjectMeta::new(name, template_id.clone());
+    meta.template_version = manifest.version.clone();
     project::create_project_files(root, &meta)?;
     let db = ProjectIndex::open(&root.join("index.db"))?;
     db.upsert_project(&meta)?;
-    tracing::info!(id = %meta.id, name = %meta.name, "项目已创建");
+    tracing::info!(id = %meta.id, name = %meta.name, template = %template_id, version = %manifest.version, "项目已创建");
     Ok(meta)
 }
 
@@ -131,10 +137,10 @@ fn resolve_root() -> AppResult<std::path::PathBuf> {
 }
 
 #[tauri::command]
-pub async fn create_project(name: String, document_type: String) -> AppResult<ProjectMeta> {
+pub async fn create_project(name: String, template_id: String) -> AppResult<ProjectMeta> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = resolve_root()?;
-        create_project_core(&root, name, document_type)
+        create_project_core(&root, name, template_id)
     })
     .await
     .map_err(crate::commands::join_error_to_app_error)?

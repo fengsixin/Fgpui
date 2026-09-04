@@ -67,6 +67,32 @@ export interface WorkspaceInfo {
   logs: string
 }
 
+/** 模板 manifest（与 Rust TemplateManifest 对齐，requiredFonts 兼容计划中的 required_fonts） */
+export interface TemplateManifest {
+  id: string
+  name: string
+  version: string
+  entry: string
+  schema: string
+  description?: string
+  sample?: string
+  requiredFonts?: string[]
+}
+
+/** 模板扫描条目（损坏包带 error） */
+export interface TemplateInfo {
+  dirName: string
+  manifest?: TemplateManifest
+  error?: string
+}
+
+/** 一条 Schema 校验问题 */
+export interface SchemaIssue {
+  instancePath: string
+  schemaPath: string
+  message: string
+}
+
 export const DOC_TYPE_TEXT: Record<string, string> = {
   'technical-design': '技术方案',
   'test-report': '测试报告',

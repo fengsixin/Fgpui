@@ -2,59 +2,121 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, MagicStick } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { docTypeText, errorKindText } from '@/api/types'
+import type { SchemaIssue } from '@/api/types'
+import * as api from '@/api/client'
+import SchemaForm from '@/components/SchemaForm.vue'
 
 const route = useRoute()
 const router = useRouter()
 const store = useProjectsStore()
 
 const projectId = computed(() => String(route.params.id ?? ''))
-const dataText = ref('')
-const jsonValid = ref(true)
+
+// 模板 Schema（表单结构来源）
+const schema = ref<Record<string, unknown> | null>(null)
+const schemaError = ref<string | null>(null)
+
+// 表单数据（由 SchemaForm 驱动）
+const formData = ref<Record<string, unknown>>({})
+const issues = ref<SchemaIssue[]>([])
+
+// 原始 JSON（高级）
+const rawVisible = ref(false)
+const rawText = ref('')
 const rebuilding = ref(false)
 
 let timer: number | undefined
 
 onMounted(async () => {
   const ok = await store.openProject(projectId.value)
-  if (ok && store.current) {
-    dataText.value = JSON.stringify(store.current.data, null, 2)
+  if (!ok || !store.current) return
+  formData.value = clone(store.current.data)
+  rawText.value = JSON.stringify(formData.value, null, 2)
+  try {
+    schema.value = await api.getTemplateSchema(store.current.project.templateId)
+    schemaError.value = null
+  } catch (err) {
+    schemaError.value = err instanceof Error ? err.message : String(err)
   }
+  void validate()
 })
 
 onBeforeUnmount(() => {
   window.clearTimeout(timer)
 })
 
-watch(dataText, (value) => {
-  try {
-    JSON.parse(value)
-    jsonValid.value = true
-  } catch {
-    jsonValid.value = false
-    return // 非法 JSON 不自动保存，避免把坏数据写盘
-  }
+function clone(v: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(v))
+}
+
+// 数据变化：防抖自动保存 + 校验
+watch(formData, () => {
+  rawText.value = JSON.stringify(formData.value, null, 2)
   window.clearTimeout(timer)
   timer = window.setTimeout(() => {
-    void autosave()
+    void persist()
   }, 800)
 })
 
-async function autosave(): Promise<void> {
-  if (!store.current || !jsonValid.value) return
-  const canonical = JSON.stringify(store.current.data, null, 2)
-  if (dataText.value === canonical) return // 无变化不写盘
-  await store.saveData(JSON.parse(dataText.value))
+async function persist(): Promise<void> {
+  if (!store.current) return
+  await store.saveData(clone(formData.value))
+  await validate()
 }
 
-async function saveNow(): Promise<void> {
-  if (!jsonValid.value) {
-    ElMessage.warning('JSON 格式有误，无法保存')
-    return
+async function validate(): Promise<void> {
+  if (!store.current) return
+  try {
+    issues.value = await api.validateDocumentData(
+      store.current.project.templateId,
+      clone(formData.value),
+    )
+  } catch {
+    issues.value = []
   }
-  await store.saveData(JSON.parse(dataText.value))
+}
+
+async function loadSample(): Promise<void> {
+  if (!store.current) return
+  try {
+    const sample = await api.getTemplateSample(store.current.project.templateId)
+    formData.value = clone(sample)
+    ElMessage.success('已加载示例数据（将自动保存）')
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+async function validateNow(): Promise<void> {
+  await validate()
+  if (issues.value.length === 0) {
+    ElMessage.success('Schema 校验通过')
+  }
+}
+
+function applyRaw(): void {
+  try {
+    formData.value = JSON.parse(rawText.value)
+    ElMessage.success('已应用 JSON 到表单（将自动保存）')
+  } catch {
+    ElMessage.error('JSON 解析失败，请检查格式')
+  }
+}
+
+function exportJson(): void {
+  const text = JSON.stringify(formData.value, null, 2)
+  void navigator.clipboard
+    ?.writeText(text)
+    .then(() => ElMessage.success('JSON 已复制到剪贴板'))
+    .catch(() => undefined)
+  void ElMessageBox.alert(
+    `<pre style="max-height:50vh;overflow:auto;white-space:pre-wrap;margin:0;">${text.replace(/</g, '&lt;')}</pre>`,
+    '导出 JSON（已复制到剪贴板）',
+    { dangerouslyUseHTMLString: true, confirmButtonText: '关闭' },
+  )
 }
 
 async function rebuildAndRetry(): Promise<void> {
@@ -64,7 +126,8 @@ async function rebuildAndRetry(): Promise<void> {
     ElMessage.success(`索引已重建（${n} 个项目）`)
     const ok = await store.openProject(projectId.value)
     if (ok && store.current) {
-      dataText.value = JSON.stringify(store.current.data, null, 2)
+      formData.value = clone(store.current.data)
+      rawText.value = JSON.stringify(formData.value, null, 2)
     }
   } catch (err) {
     ElMessage.error(err instanceof Error ? err.message : String(err))
@@ -97,7 +160,6 @@ const saveStateType = computed(() => {
         <el-tag type="info" effect="plain">模板 {{ store.current.project.templateVersion }}</el-tag>
       </template>
       <div class="topbar-spacer" />
-      <el-tag v-if="store.current && !jsonValid" type="warning" effect="dark">JSON 格式错误，已暂停保存</el-tag>
       <el-tag v-if="store.current" :type="(saveStateType as any)" effect="dark">{{ saveStateText }}</el-tag>
     </div>
 
@@ -108,9 +170,6 @@ const saveStateType = computed(() => {
       :closable="false"
       class="load-error"
       :title="`${errorKindText(store.currentErrorKind)}：${store.currentError}`"
-      :description="store.currentErrorKind === 'project_files_missing' || store.currentErrorKind === 'db_corrupted'
-        ? '项目文件仍保存在磁盘上，可尝试重建索引恢复，或返回列表删除残留。'
-        : undefined"
     >
       <template v-if="store.currentErrorKind === 'project_files_missing' || store.currentErrorKind === 'db_corrupted'">
         <el-button size="small" type="primary" :icon="MagicStick" :loading="rebuilding" @click="rebuildAndRetry">
@@ -123,45 +182,57 @@ const saveStateType = computed(() => {
       <el-card shadow="never">
         <template #header>
           <div class="editor-header">
-            <span>文档数据（JSON）</span>
-            <span class="hint">阶段 2 起该区域将由模板 Schema 驱动为业务表单；当前可直接编辑 JSON，修改后 0.8 秒自动保存</span>
+            <span>文档表单（由模板 Schema 驱动）</span>
+            <div class="editor-actions">
+              <el-button size="small" @click="loadSample">加载示例数据</el-button>
+              <el-button size="small" @click="validateNow">校验</el-button>
+              <el-button size="small" @click="exportJson">导出 JSON</el-button>
+            </div>
           </div>
         </template>
 
         <el-alert
-          v-if="!jsonValid"
-          type="warning"
-          show-icon
-          :closable="false"
-          title="JSON 解析失败"
-          description="已暂停自动保存，修正格式后恢复。"
-          class="json-alert"
-        />
-
-        <el-alert
-          v-if="store.saveError"
+          v-if="schemaError"
           type="error"
           show-icon
           :closable="false"
-          :title="`保存失败：${store.saveError}`"
-          class="json-alert"
+          :title="`模板 Schema 加载失败：${schemaError}`"
+          class="block-alert"
         />
 
-        <el-input
-          v-model="dataText"
-          type="textarea"
-          :rows="20"
-          spellcheck="false"
-          class="data-editor"
-          placeholder='{"title": "文档标题"}'
-        />
+        <el-alert
+          v-else-if="issues.length"
+          type="warning"
+          show-icon
+          :closable="false"
+          :title="`Schema 校验：${issues.length} 个问题`"
+          class="block-alert"
+        >
+          <ul class="issue-list">
+            <li v-for="(it, i) in issues.slice(0, 10)" :key="i">
+              <code>{{ it.instancePath || '(根)' }}</code> {{ it.message }}
+            </li>
+          </ul>
+          <span v-if="issues.length > 10">… 共 {{ issues.length }} 条</span>
+        </el-alert>
 
-        <div class="editor-footer">
-          <span class="hint">{{ store.workspaceInfo?.projects ?? '' }}</span>
-          <el-button size="small" :disabled="!jsonValid" :loading="store.saving" @click="saveNow">
-            立即保存
-          </el-button>
-        </div>
+        <SchemaForm v-if="schema" :schema="schema" v-model="formData" />
+        <el-empty v-else-if="!schemaError" description="正在加载模板 Schema…" :image-size="60" />
+
+        <el-collapse v-model="rawVisible" class="raw-collapse">
+          <el-collapse-item title="原始 JSON（高级）" name="raw">
+            <el-input
+              v-model="rawText"
+              type="textarea"
+              :rows="14"
+              spellcheck="false"
+              class="raw-editor"
+            />
+            <div class="raw-actions">
+              <el-button size="small" type="primary" @click="applyRaw">应用到表单</el-button>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </el-card>
     </template>
 
@@ -200,37 +271,48 @@ const saveStateType = computed(() => {
 
 .editor-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.editor-header .hint {
+.editor-actions {
+  display: flex;
+  gap: 0;
+}
+
+.block-alert {
+  margin-bottom: 14px;
+}
+
+.issue-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
-  font-weight: normal;
 }
 
-.json-alert {
-  margin-bottom: 12px;
+.issue-list code {
+  background: var(--el-fill-color);
+  padding: 0 4px;
+  border-radius: 3px;
+  margin-right: 4px;
 }
 
-.data-editor :deep(textarea) {
+.raw-collapse {
+  margin-top: 18px;
+  border-top: 1px dashed var(--el-border-color-lighter);
+}
+
+.raw-editor :deep(textarea) {
   font-family: Consolas, 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.6;
 }
 
-.editor-footer {
-  margin-top: 12px;
+.raw-actions {
+  margin-top: 8px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.editor-footer .hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  word-break: break-all;
+  justify-content: flex-end;
 }
 </style>

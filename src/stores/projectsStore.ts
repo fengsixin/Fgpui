@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as api from '@/api/client'
-import type { Project, ProjectDetail, ProjectSummary, WorkspaceInfo } from '@/api/types'
+import type { Project, ProjectDetail, ProjectSummary, TemplateInfo, WorkspaceInfo } from '@/api/types'
 import { formatAppError } from '@/stores/appStore'
 
 export const useProjectsStore = defineStore('projects', () => {
@@ -11,6 +11,10 @@ export const useProjectsStore = defineStore('projects', () => {
   const listError = ref<string | null>(null)
   const listErrorKind = ref<string | null>(null)
   const workspaceInfo = ref<WorkspaceInfo | null>(null)
+
+  // 模板（阶段 2）
+  const templates = ref<TemplateInfo[]>([])
+  const templatesLoading = ref(false)
 
   // 当前打开的项目
   const current = ref<ProjectDetail | null>(null)
@@ -47,10 +51,26 @@ export const useProjectsStore = defineStore('projects', () => {
     }
   }
 
-  async function createProject(name: string, documentType: string): Promise<Project> {
-    const created = await api.createProject(name, documentType)
+  async function createProject(name: string, templateId: string): Promise<Project> {
+    const created = await api.createProject(name, templateId)
     await refreshList()
     return created
+  }
+
+  async function refreshTemplates(): Promise<void> {
+    templatesLoading.value = true
+    try {
+      templates.value = await api.listTemplates()
+    } catch {
+      templates.value = []
+    } finally {
+      templatesLoading.value = false
+    }
+  }
+
+  async function importTemplate(sourcePath: string): Promise<void> {
+    await api.importTemplate(sourcePath)
+    await refreshTemplates()
   }
 
   async function openProject(id: string): Promise<boolean> {
@@ -109,6 +129,8 @@ export const useProjectsStore = defineStore('projects', () => {
     listError,
     listErrorKind,
     workspaceInfo,
+    templates,
+    templatesLoading,
     current,
     currentLoading,
     currentError,
@@ -119,6 +141,8 @@ export const useProjectsStore = defineStore('projects', () => {
     refreshList,
     loadWorkspaceInfo,
     createProject,
+    refreshTemplates,
+    importTemplate,
     openProject,
     saveData,
     removeProject,
