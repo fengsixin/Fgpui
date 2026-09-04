@@ -16,6 +16,17 @@ use tracing::info;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 0) 全局 panic 兜底：任何未捕获 panic 都记录到日志（不静默崩溃）
+    std::panic::set_hook(Box::new(|info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let message = info.to_string();
+        tracing::error!(target: "panic", location = %location, "进程 panic: {message}");
+        eprintln!("[fgpui] PANIC @ {location}: {message}");
+    }));
+
     // 1) 初始化本地工作目录（失败不阻塞启动，退化为临时目录日志）
     let dirs = paths::ensure_workspace_dirs().map_err(|e| {
         eprintln!("[fgpui] 工作目录初始化失败: {e}");
@@ -54,8 +65,8 @@ pub fn run() {
         }
     }
 
-    // 3) 启动 Tauri 应用
-    tauri::Builder::default()
+    // 3) 启动 Tauri 应用（运行错误优雅退出，不 panic）
+    let app_result = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             commands::dev::check_typst,
             commands::dev::run_typst_smoke_test,
@@ -73,6 +84,11 @@ pub fn run() {
             commands::templates::import_template,
             commands::templates::validate_document_data,
         ])
-        .run(tauri::generate_context!())
-        .expect("Fgpui 应用运行失败");
+        .run(tauri::generate_context!());
+
+    if let Err(e) = app_result {
+        tracing::error!(error = %e, "Fgpui 应用异常退出");
+        eprintln!("[fgpui] 应用运行失败: {e}");
+        std::process::exit(1);
+    }
 }

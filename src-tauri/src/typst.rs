@@ -7,6 +7,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -200,32 +201,52 @@ fn summarize_diagnostic(d: &Diagnostic) -> String {
 ///   ┌─ C:\path\file.typ:12:5        (0.12+)
 ///   --> C:\path\file.typ:12:5      (旧版)
 /// ```
-pub fn parse_diagnostics(stderr: &str) -> Vec<Diagnostic> {
-    let severity_re = regex::Regex::new(r"^\s*(error|warning)\s*:\s*(.*)$").expect("severity regex");
-    let location_re = regex::Regex::new(r"(?:┌─|-->|-->)\s*(.+?):(\d+):(\d+)\s*$").expect("location regex");
+///
+/// 无 panic 设计：正则仅用于可选的位置定位，编译失败时降级为
+/// 「保留错误消息、丢失行号」，解析器本身绝不 panic。
+fn location_re() -> Option<&'static regex::Regex> {
+    static LOCATION_RE: OnceLock<Option<regex::Regex>> = OnceLock::new();
+    LOCATION_RE
+        .get_or_init(|| regex::Regex::new(r"(?:┌─|-->|-->)\s*(.+?):(\d+):(\d+)\s*$").ok())
+        .as_ref()
+}
 
+pub fn parse_diagnostics(stderr: &str) -> Vec<Diagnostic> {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     for raw in stderr.lines() {
         let line = raw.trim_end();
-        if let Some(caps) = severity_re.captures(line) {
-            diagnostics.push(Diagnostic {
-                severity: caps[1].to_string(),
-                file: None,
-                line: None,
-                column: None,
-                message: caps[2].trim().to_string(),
-            });
-            continue;
-        }
-        if let Some(caps) = location_re.captures(line) {
-            if let Some(last) = diagnostics.last_mut() {
-                if last.file.is_none() {
-                    last.file = Some(caps[1].to_string());
-                    last.line = caps[2].parse().ok();
-                    last.column = caps[3].parse().ok();
+        let trimmed = line.trim_start();
+
+        // 严重级别行（纯字符串匹配，不依赖正则）
+        let (severity, message) = if let Some(rest) = trimmed.strip_prefix("error:") {
+            ("error", rest.trim())
+        } else if let Some(rest) = trimmed.strip_prefix("warning:") {
+            ("warning", rest.trim())
+        } else {
+            // 位置行：仅当正则可用时才附加定位
+            if let Some(re) = location_re() {
+                if let Some(caps) = re.captures(trimmed) {
+                    if let Some(last) = diagnostics.last_mut() {
+                        if last.file.is_none() {
+                            last.file = Some(caps[1].to_string());
+                            last.line = caps[2].parse().ok();
+                            last.column = caps[3].parse().ok();
+                        }
+                    }
                 }
             }
+            continue;
+        };
+        if message.is_empty() {
+            continue;
         }
+        diagnostics.push(Diagnostic {
+            severity: severity.to_string(),
+            file: None,
+            line: None,
+            column: None,
+            message: message.to_string(),
+        });
     }
     diagnostics
 }
