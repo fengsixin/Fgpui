@@ -22,3 +22,6 @@ logs/
 # 系统文件
 Thumbs.db
 .DS_Store
+
+# Typst 固定基线（本地文件，不入库；由 scripts/setup-typst.ps1 接入 sidecar）
+typst.exe
