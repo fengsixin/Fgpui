@@ -3,9 +3,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, MagicStick } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { docTypeText, errorKindText } from '@/api/types'
-import type { AppError, CompileState, SchemaIssue } from '@/api/types'
+import type { AppError, CompileState, ImportPreview, SchemaIssue } from '@/api/types'
+import { formatAppError } from '@/stores/appStore'
 import * as api from '@/api/client'
 import SchemaForm from '@/components/SchemaForm.vue'
 import PdfViewer from '@/components/PdfViewer.vue'
@@ -132,6 +134,71 @@ function exportJson(): void {
     '导出 JSON（已复制到剪贴板）',
     { dangerouslyUseHTMLString: true, confirmButtonText: '关闭' },
   )
+}
+
+// 导入预览（阶段 4）
+const importDialogVisible = ref(false)
+const importPreview = ref<ImportPreview | null>(null)
+const importSourceText = ref('')
+const importApplying = ref(false)
+
+async function pickAndImport(kind: 'excel' | 'json'): Promise<void> {
+  if (!store.current) return
+  const file = await openFileDialog({
+    multiple: false,
+    title: kind === 'excel' ? '选择 Excel 文件' : '选择 JSON 文件',
+    filters:
+      kind === 'excel'
+        ? [{ name: 'Excel', extensions: ['xlsx', 'xls', 'xlsm'] }]
+        : [{ name: 'JSON', extensions: ['json'] }],
+  })
+  if (!file || typeof file !== 'string') return
+  try {
+    const preview =
+      kind === 'excel'
+        ? await api.importExcelData(projectId.value, file)
+        : await api.importJsonData(projectId.value, file)
+    importPreview.value = preview
+    importSourceText.value = kind === 'excel' ? 'Excel' : 'JSON'
+    importDialogVisible.value = true
+  } catch (err) {
+    ElMessage.error(formatAppError(err))
+  }
+}
+
+async function confirmImport(): Promise<void> {
+  if (!importPreview.value) return
+  importApplying.value = true
+  try {
+    await store.saveData(clone(importPreview.value.data))
+    importDialogVisible.value = false
+    ElMessage.success('导入已写入项目数据（将自动保存）')
+  } catch (err) {
+    ElMessage.error(formatAppError(err))
+  } finally {
+    importApplying.value = false
+  }
+}
+
+/** 导入图片到 assets 并把引用追加到正文 */
+async function importImage(): Promise<void> {
+  if (!store.current) return
+  const file = await openFileDialog({
+    multiple: false,
+    title: '选择图片',
+    filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'] }],
+  })
+  if (!file || typeof file !== 'string') return
+  try {
+    const rel = await api.importProjectAsset(projectId.value, file)
+    const name = file.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') ?? '图片'
+    const body = (formData.value['body'] as string | undefined) ?? ''
+    const snippet = `\n#figure(\n  image("${rel}", width: 10cm),\n  caption: [${name}],\n)\n`
+    formData.value = { ...formData.value, body: body + snippet }
+    ElMessage.success(`图片已导入：${rel}（引用已追加到正文）`)
+  } catch (err) {
+    ElMessage.error(formatAppError(err))
+  }
 }
 
 // ---------- 编译与预览 ----------
@@ -278,6 +345,9 @@ const stateTagMap: Record<CompileState, string> = {
             <span>文档表单（由模板 Schema 驱动）</span>
             <div class="editor-actions">
               <el-button size="small" @click="loadSample">加载示例数据</el-button>
+              <el-button size="small" @click="pickAndImport('excel')">导入 Excel</el-button>
+              <el-button size="small" @click="pickAndImport('json')">导入 JSON</el-button>
+              <el-button size="small" @click="importImage">导入图片</el-button>
               <el-button size="small" @click="validateNow">校验</el-button>
               <el-button size="small" @click="exportJson">导出 JSON</el-button>
             </div>
@@ -413,7 +483,77 @@ const stateTagMap: Record<CompileState, string> = {
       </el-card>
     </template>
 
-    <el-empty v-else-if="!store.currentLoading && !store.currentError" description="项目未找到" />
+    <!-- 导入预览对话框 -->
+    <el-dialog v-model="importDialogVisible" :title="`导入预览（${importSourceText}）`" width="840px">
+      <template v-if="importPreview">
+        <el-alert
+          v-if="importPreview.issues.some((i) => i.severity === 'error')"
+          type="warning"
+          show-icon
+          :closable="false"
+          class="block-alert"
+          :title="`发现 ${importPreview.issues.filter((i) => i.severity === 'error').length} 个校验问题，确认写入前请检查`"
+        />
+        <el-descriptions :column="2" border size="small" class="imp-desc">
+          <el-descriptions-item v-if="importPreview.sheetName" label="工作表">
+            {{ importPreview.sheetName }}
+          </el-descriptions-item>
+          <el-descriptions-item label="数据行">{{ importPreview.rows.length }}</el-descriptions-item>
+        </el-descriptions>
+
+        <template v-if="importPreview.columnPaths.length">
+          <div class="imp-section">列映射</div>
+          <el-table :data="importPreview.columnPaths" size="small" max-height="180">
+            <el-table-column prop="column" label="列名" width="180" />
+            <el-table-column prop="path" label="写入字段" />
+          </el-table>
+        </template>
+
+        <template v-if="importPreview.rows.length">
+          <div class="imp-section">行预览</div>
+          <el-table :data="importPreview.rows" size="small" max-height="220">
+            <el-table-column prop="row" label="行号" width="70" />
+            <el-table-column label="写入内容">
+              <template #default="{ row }">
+                <span v-for="(v, k) in row.values" :key="k" class="mono imp-kv">{{ k }}={{ v }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </template>
+
+        <template v-if="importPreview.issues.length">
+          <div class="imp-section">问题列表</div>
+          <el-table :data="importPreview.issues" size="small" max-height="200">
+            <el-table-column label="级别" width="80">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.severity === 'error' ? 'danger' : 'warning'">
+                  {{ row.severity === 'error' ? '错误' : '警告' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="位置" width="220">
+              <template #default="{ row }">
+                <span class="mono">
+                  {{ row.sheet ?? '' }}{{ row.row ? ` 第${row.row}行` : '' }}{{ row.column ? ` 「${row.column}」` : '' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="message" label="说明" />
+          </el-table>
+        </template>
+      </template>
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importApplying" @click="confirmImport">
+          确认写入项目数据
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-empty
+      v-if="!store.current && !store.currentLoading && !store.currentError"
+      description="项目未找到"
+    />
   </div>
 </template>
 
@@ -543,5 +683,21 @@ const stateTagMap: Record<CompileState, string> = {
   padding: 8px;
   border-radius: 4px;
   white-space: pre-wrap;
+}
+
+.imp-desc {
+  margin-bottom: 12px;
+}
+
+.imp-section {
+  font-weight: 600;
+  font-size: 13px;
+  margin: 12px 0 6px;
+}
+
+.imp-kv {
+  display: inline-block;
+  margin-right: 10px;
+  font-size: 12px;
 }
 </style>

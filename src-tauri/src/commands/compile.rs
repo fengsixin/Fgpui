@@ -93,7 +93,7 @@ pub fn run_compile_task(
     let assets = project_dir.join("assets");
     let assets_ref = if assets.is_dir() { Some(assets.as_path()) } else { None };
 
-    let compiler = CliCompiler::new()?;
+    let compiler = CliCompiler::new()?.with_fonts(workspace.join("fonts"));
     compiler.compile(&req, assets_ref, cancel)
 }
 

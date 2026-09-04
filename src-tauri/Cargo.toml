@@ -29,7 +29,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
 jsonschema = "0.30"
-calamine = "0.35.0"
+calamine = { version = "0.35.0", features = ["dates"] }
 tauri-plugin-dialog = "2.7.3"
 
 [dev-dependencies]

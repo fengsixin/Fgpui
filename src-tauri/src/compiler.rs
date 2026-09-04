@@ -45,6 +45,8 @@ pub struct CompileResult {
 pub struct CliCompiler {
     exe: PathBuf,
     timeout: Duration,
+    /// 应用字体目录（可选；编译时以 --font-path 传入，优先于系统字体）
+    fonts_dir: Option<PathBuf>,
 }
 
 impl CliCompiler {
@@ -52,7 +54,14 @@ impl CliCompiler {
         Ok(Self {
             exe: typst::resolve_typst_exe()?,
             timeout: typst::COMPILE_TIMEOUT,
+            fonts_dir: None,
         })
+    }
+
+    /// 附加应用字体目录（编译时以 --font-path 传入）。
+    pub fn with_fonts(mut self, fonts_dir: PathBuf) -> Self {
+        self.fonts_dir = Some(fonts_dir);
+        self
     }
 
     /// 执行一次编译。
@@ -93,6 +102,7 @@ impl CliCompiler {
         }
         let staged_pdf = staging.join("output.pdf");
 
+        let font_paths: Vec<PathBuf> = self.fonts_dir.iter().cloned().collect();
         let outcome: CompileOutcome = typst::compile_with_cancel(
             &self.exe,
             staging,
@@ -100,6 +110,7 @@ impl CliCompiler {
             &staged_pdf,
             self.timeout,
             cancel,
+            &font_paths,
         )?;
 
         // 2) 移动到项目输出（目标名唯一，rename 失败则 copy+delete 兜底跨卷）

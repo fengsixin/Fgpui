@@ -1,6 +1,7 @@
 //! Tauri commands（对外接口）。
 pub mod compile;
 pub mod dev;
+pub mod import;
 pub mod projects;
 pub mod templates;
 

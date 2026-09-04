@@ -117,10 +117,11 @@ pub fn compile(
     output: &Path,
     timeout: Duration,
 ) -> AppResult<CompileOutcome> {
-    compile_with_cancel(exe, root, input, output, timeout, &AtomicBool::new(false))
+    compile_with_cancel(exe, root, input, output, timeout, &AtomicBool::new(false), &[])
 }
 
-/// 同 compile，支持外部取消标志（编译循环内每 50ms 检查一次）。
+/// 同 compile，支持外部取消标志（编译循环内每 50ms 检查一次）
+/// 与附加字体目录（应用分发的字体，通过 --font-path 传入，可多个）。
 pub fn compile_with_cancel(
     exe: &Path,
     root: &Path,
@@ -128,17 +129,26 @@ pub fn compile_with_cancel(
     output: &Path,
     timeout: Duration,
     cancel: &AtomicBool,
+    font_paths: &[PathBuf],
 ) -> AppResult<CompileOutcome> {
     let started = Instant::now();
 
-    let mut child = Command::new(exe)
-        .arg("compile")
+    let mut command = Command::new(exe);
+    command.arg("compile");
+    for fonts in font_paths {
+        if fonts.is_dir() {
+            command.arg("--font-path").arg(fonts);
+        }
+    }
+    command
         .arg("--root")
         .arg(root)
         .arg(input)
         .arg(output)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = command
         .spawn()
         .map_err(|e| AppError::io(format!("启动 Typst 进程失败 {:?}", exe), e))?;
 

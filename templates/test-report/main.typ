@@ -1,22 +1,37 @@
 // 测试报告模板入口。数据契约：schema.json；示例：examples/sample.json
+// 结构：封面 → 目录（页眉页脚/页码）→ 修订记录 → 范围/环境/用例/问题 → 结论 → 补充正文
 #let data = json("data.json")
 #import "theme.typ": apply-theme
-#import "components/ui.typ": meta-table
+#import "components/ui.typ": meta-table, revisions-table
 
 #show: apply-theme
 
-#align(center)[
-  #text(size: 20pt, weight: "bold")[#data.title]
+// 封面（无页码）
+#set page(numbering: none, header: none, footer: none)
+#align(center + horizon)[
+  #v(-2.5cm)
+  #text(size: 24pt, weight: "bold")[#data.title]
+  #v(1.6em)
+  #meta-table((
+    ([*测试负责人*], [#data.at("author", default: "")]),
+    ([*报告版本*], [#data.at("version", default: "")]),
+    ([*报告日期*], [#data.at("date", default: "")]),
+    ([*密级*], [#data.at("classification", default: "")]),
+  ))
 ]
 
-#v(0.8em)
-#meta-table((
-  ([*报告标题*], [#data.title]),
-  ([*测试负责人*], [#data.at("author", default: "")]),
-  ([*报告版本*], [#data.at("version", default: "")]),
-  ([*报告日期*], [#data.at("date", default: "")]),
-  ([*密级*], [#data.at("classification", default: "")]),
-))
+// 正文区：页眉与页脚
+#set page(
+  numbering: "1",
+  header: align(right)[#text(size: 9pt, fill: luma(120))[#data.title ｜ 密级：#data.at("classification", default: "")]],
+  footer: context align(center)[#text(size: 9pt)[第 #counter(page).display() 页 / 共 #counter(page).final().first() 页]],
+)
+
+#pagebreak()
+#outline(title: [目录], depth: 3)
+#pagebreak()
+
+#revisions-table(data.at("revisions", default: ()))
 
 #if data.at("scope", default: "") != "" [
   == 测试范围

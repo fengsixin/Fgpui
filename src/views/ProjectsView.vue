@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Delete, Folder, MagicStick, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { formatAppError } from '@/stores/appStore'
 import { docTypeText } from '@/api/types'
@@ -79,20 +80,18 @@ async function rebuild(): Promise<void> {
 }
 
 async function importTemplate(): Promise<void> {
+  const dir = await openFileDialog({
+    multiple: false,
+    directory: true,
+    title: '选择模板包目录（内含 manifest.json）',
+  })
+  if (!dir || typeof dir !== 'string') return
+  importing.value = true
   try {
-    const { value } = await ElMessageBox.prompt(
-      '输入模板包目录的完整路径（目录内需含 manifest.json）',
-      '导入模板包',
-      { inputPlaceholder: 'D:\\tpl\\my-template' },
-    )
-    if (!value?.trim()) return
-    importing.value = true
-    await store.importTemplate(value.trim())
+    await store.importTemplate(dir)
     ElMessage.success('模板已导入')
   } catch (err) {
-    if (err !== 'cancel' && err !== 'close') {
-      ElMessage.error(formatAppError(err))
-    }
+    ElMessage.error(formatAppError(err))
   } finally {
     importing.value = false
   }

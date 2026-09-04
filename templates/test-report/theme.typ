@@ -1,6 +1,7 @@
-// 文档主题：中英文混排基线（正式分发的字体在阶段 4/6 由应用字体目录提供）
+// 文档主题：中英文混排基线（正式分发的字体在应用字体目录，经 --font-path 接入）
+// 页码 / 页眉 / 页脚由 main.typ 按封面/正文分区设置
 #let apply-theme(doc) = {
-  set page(paper: "a4", margin: (x: 2.2cm, y: 2.2cm), numbering: "1 / 1", number-align: center)
+  set page(paper: "a4", margin: (x: 2.2cm, y: 2.2cm))
   set text(
     font: ((name: "Microsoft YaHei", covers: "latin-in-cjk"), "Segoe UI"),
     size: 11pt,

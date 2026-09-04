@@ -112,6 +112,40 @@ export interface SessionSnapshot {
   startedAt: string | null
 }
 
+/** 导入预览中的列映射 */
+export interface ColumnMap {
+  column: string
+  path: string
+}
+
+/** 导入预览中的一行 */
+export interface ImportRow {
+  row: number
+  values: Record<string, string>
+}
+
+/** 一条导入问题（定位到工作表/行/列） */
+export interface CellIssue {
+  sheet: string | null
+  row: number | null
+  column: string | null
+  path: string | null
+  severity: 'error' | 'warning'
+  message: string
+}
+
+/** 导入预览（确认后写入） */
+export interface ImportPreview {
+  source: 'excel' | 'json'
+  sheetName: string | null
+  headers: string[]
+  columnPaths: ColumnMap[]
+  unmappedHeaders: string[]
+  rows: ImportRow[]
+  data: Record<string, unknown>
+  issues: CellIssue[]
+}
+
 export const DOC_TYPE_TEXT: Record<string, string> = {
   'technical-design': '技术方案',
   'test-report': '测试报告',

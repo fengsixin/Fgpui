@@ -1,0 +1,16 @@
+{
+  "columns": {
+    "标题": "title",
+    "副标题": "subtitle",
+    "作者": "author",
+    "版本": "version",
+    "日期": "date",
+    "密级": "classification",
+    "摘要": "summary",
+    "修订版本": "revisions[].version",
+    "修订日期": "revisions[].date",
+    "修订人": "revisions[].author",
+    "修订说明": "revisions[].description",
+    "正文": "body"
+  }
+}

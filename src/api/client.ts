@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   CompileState,
+  ImportPreview,
   Project,
   ProjectDetail,
   ProjectSummary,
@@ -127,4 +128,26 @@ export function openOutputFile(path: string): Promise<void> {
 /** 读取 PDF 字节（PDF.js 内嵌预览） */
 export function readPdfBytes(path: string): Promise<number[]> {
   return invoke('read_pdf_bytes', { path })
+}
+
+// ---------- 阶段 4：导入 ----------
+
+/** Excel 导入预览（固定列名映射；确认后用 save_project 写入） */
+export function importExcelData(projectId: string, filePath: string): Promise<ImportPreview> {
+  return invoke('import_excel_data', { projectId, filePath })
+}
+
+/** JSON 导入预览（整体替换；确认后用 save_project 写入） */
+export function importJsonData(projectId: string, filePath: string): Promise<ImportPreview> {
+  return invoke('import_json_data', { projectId, filePath })
+}
+
+/** 导入图片到项目 assets，返回正文引用的相对路径 */
+export function importProjectAsset(projectId: string, filePath: string): Promise<string> {
+  return invoke('import_project_asset', { projectId, filePath })
+}
+
+/** 快速校验文件存在 */
+export function assertFileExists(path: string): Promise<void> {
+  return invoke('assert_file_exists', { path })
 }

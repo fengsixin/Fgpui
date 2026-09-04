@@ -52,6 +52,21 @@
       }
     },
     "conclusion": { "type": "string", "title": "测试结论", "format": "textarea", "minLength": 1 },
+    "revisions": {
+      "type": "array",
+      "title": "修订记录",
+      "items": {
+        "type": "object",
+        "title": "修订",
+        "required": ["version"],
+        "properties": {
+          "version": { "type": "string", "title": "版本", "minLength": 1 },
+          "date": { "type": "string", "title": "日期" },
+          "author": { "type": "string", "title": "修订人" },
+          "description": { "type": "string", "title": "修订说明" }
+        }
+      }
+    },
     "body": {
       "type": "string",
       "title": "补充正文（Typst 源码，可选）",

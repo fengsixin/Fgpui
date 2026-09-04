@@ -6,6 +6,7 @@ pub mod commands;
 pub mod compiler;
 pub mod db;
 pub mod error;
+pub mod import;
 pub mod logging;
 pub mod paths;
 pub mod project;
@@ -68,6 +69,7 @@ pub fn run() {
 
     // 3) 启动 Tauri 应用（运行错误优雅退出，不 panic）
     let app_result = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::compile::AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::dev::check_typst,
@@ -91,6 +93,10 @@ pub fn run() {
             commands::compile::latest_output,
             commands::compile::open_output_file,
             commands::compile::read_pdf_bytes,
+            commands::import::import_excel_data,
+            commands::import::import_json_data,
+            commands::import::import_project_asset,
+            commands::import::assert_file_exists,
         ])
         .run(tauri::generate_context!());
 

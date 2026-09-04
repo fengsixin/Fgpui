@@ -11,6 +11,21 @@
     "date": { "type": "string", "title": "编写日期" },
     "classification": { "type": "string", "title": "密级", "enum": ["公开", "内部", "秘密"], "default": "内部" },
     "summary": { "type": "string", "title": "摘要", "format": "textarea" },
+    "revisions": {
+      "type": "array",
+      "title": "修订记录",
+      "items": {
+        "type": "object",
+        "title": "修订",
+        "required": ["version"],
+        "properties": {
+          "version": { "type": "string", "title": "版本", "minLength": 1 },
+          "date": { "type": "string", "title": "日期" },
+          "author": { "type": "string", "title": "修订人" },
+          "description": { "type": "string", "title": "修订说明" }
+        }
+      }
+    },
     "body": {
       "type": "string",
       "title": "正文（Typst 源码）",
