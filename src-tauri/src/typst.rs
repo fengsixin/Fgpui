@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -116,6 +117,18 @@ pub fn compile(
     output: &Path,
     timeout: Duration,
 ) -> AppResult<CompileOutcome> {
+    compile_with_cancel(exe, root, input, output, timeout, &AtomicBool::new(false))
+}
+
+/// 同 compile，支持外部取消标志（编译循环内每 50ms 检查一次）。
+pub fn compile_with_cancel(
+    exe: &Path,
+    root: &Path,
+    input: &Path,
+    output: &Path,
+    timeout: Duration,
+    cancel: &AtomicBool,
+) -> AppResult<CompileOutcome> {
     let started = Instant::now();
 
     let mut child = Command::new(exe)
@@ -129,12 +142,18 @@ pub fn compile(
         .spawn()
         .map_err(|e| AppError::io(format!("启动 Typst 进程失败 {:?}", exe), e))?;
 
-    // 非阻塞等待 + 超时终止，避免编译挂死拖垮后端
+    // 非阻塞等待 + 超时/取消终止，避免编译挂死拖垮后端
     let wait_start = Instant::now();
     let status = loop {
         match child.try_wait().map_err(AppError::from)? {
             Some(status) => break status,
             None => {
+                if cancel.load(Ordering::Relaxed) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(output); // 清理半成品
+                    return Err(AppError::cancelled());
+                }
                 if wait_start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();

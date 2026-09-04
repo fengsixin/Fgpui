@@ -51,6 +51,12 @@
         }
       }
     },
-    "conclusion": { "type": "string", "title": "测试结论", "format": "textarea", "minLength": 1 }
+    "conclusion": { "type": "string", "title": "测试结论", "format": "textarea", "minLength": 1 },
+    "body": {
+      "type": "string",
+      "title": "补充正文（Typst 源码，可选）",
+      "description": "渲染在「测试结论」之后；直接书写 Typst 标记：== 标题、- 列表、#table(...) 等",
+      "format": "code"
+    }
   }
 }

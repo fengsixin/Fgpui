@@ -1,7 +1,8 @@
 // 技术方案模板入口。数据契约：schema.json；示例：examples/sample.json
+// 正文（data.body）为 Typst 标记源码，用户自由书写，经 eval 渲染。
 #let data = json("data.json")
 #import "theme.typ": apply-theme
-#import "components/ui.typ": meta-table, chapter-table, figure-block
+#import "components/ui.typ": meta-table
 
 #show: apply-theme
 
@@ -27,15 +28,7 @@
   #data.summary
 ]
 
-#if data.at("background", default: "") != "" [
-  == 背景与目标
-  #data.background
-]
-
-#for chapter in data.at("chapters", default: ()) [
-  #heading(level: chapter.at("level", default: 2), chapter.at("heading", default: ""))
-  #if chapter.at("content", default: "") != "" [#chapter.content]
-  #if chapter.at("table", default: none) != none [#chapter-table(chapter.table)]
-  #for img in chapter.at("images", default: ()) [#figure-block(img)]
-  #v(0.6em)
+#let body-src = data.at("body", default: "")
+#if body-src != "" [
+  #eval(body-src, mode: "markup")
 ]

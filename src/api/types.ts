@@ -93,6 +93,25 @@ export interface SchemaIssue {
   message: string
 }
 
+/** 计划定义的编译状态机 */
+export type CompileState =
+  | 'idle'
+  | 'validating'
+  | 'compiling'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+
+/** 编译会话快照 */
+export interface SessionSnapshot {
+  projectId: string
+  state: CompileState
+  outputPath: string | null
+  error: AppError | null
+  durationMs: number | null
+  startedAt: string | null
+}
+
 export const DOC_TYPE_TEXT: Record<string, string> = {
   'technical-design': '技术方案',
   'test-report': '测试报告',
@@ -108,6 +127,7 @@ export const ERROR_KIND_TEXT: Record<string, string> = {
   typst_version_check_failed: 'Typst 版本检查失败',
   compile_failed: 'Typst 编译失败',
   compile_timeout: '编译超时',
+  cancelled: '编译已取消',
   db_corrupted: '项目索引数据库损坏',
   project_not_found: '项目不存在',
   project_files_missing: '项目文件缺失',

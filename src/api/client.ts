@@ -1,9 +1,11 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
+  CompileState,
   Project,
   ProjectDetail,
   ProjectSummary,
   SchemaIssue,
+  SessionSnapshot,
   SmokeTestResult,
   TemplateInfo,
   TemplateManifest,
@@ -93,4 +95,36 @@ export function validateDocumentData(
   data: Record<string, unknown>,
 ): Promise<SchemaIssue[]> {
   return invoke('validate_document_data', { templateId, data })
+}
+
+// ---------- 阶段 3：编译与预览 ----------
+
+/** 启动编译（异步立即返回；结果用 getCompileStatus 轮询） */
+export function compileDocument(projectId: string): Promise<CompileState> {
+  return invoke('compile_document', { projectId })
+}
+
+/** 取消进行中的编译 */
+export function cancelCompile(projectId: string): Promise<boolean> {
+  return invoke('cancel_compile', { projectId })
+}
+
+/** 查询编译状态 */
+export function getCompileStatus(projectId: string): Promise<SessionSnapshot> {
+  return invoke('get_compile_status', { projectId })
+}
+
+/** 项目最近一次成功输出 */
+export function latestOutput(projectId: string): Promise<string | null> {
+  return invoke('latest_output', { projectId })
+}
+
+/** 用系统默认程序打开 PDF */
+export function openOutputFile(path: string): Promise<void> {
+  return invoke('open_output_file', { path })
+}
+
+/** 读取 PDF 字节（PDF.js 内嵌预览） */
+export function readPdfBytes(path: string): Promise<number[]> {
+  return invoke('read_pdf_bytes', { path })
 }

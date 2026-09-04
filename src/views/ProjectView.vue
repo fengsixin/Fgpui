@@ -5,9 +5,10 @@ import { ArrowLeft, MagicStick } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { docTypeText, errorKindText } from '@/api/types'
-import type { SchemaIssue } from '@/api/types'
+import type { AppError, CompileState, SchemaIssue } from '@/api/types'
 import * as api from '@/api/client'
 import SchemaForm from '@/components/SchemaForm.vue'
+import PdfViewer from '@/components/PdfViewer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,11 +25,18 @@ const formData = ref<Record<string, unknown>>({})
 const issues = ref<SchemaIssue[]>([])
 
 // 原始 JSON（高级）
-const rawVisible = ref(false)
+const rawVisible = ref<string[]>([])
 const rawText = ref('')
 const rebuilding = ref(false)
 
-let timer: number | undefined
+// 编译与预览
+const compileState = ref<CompileState>('idle')
+const compileError = ref<AppError | null>(null)
+const pdfPath = ref<string | null>(null)
+const compileDuration = ref<number | null>(null)
+const compileStarting = ref(false)
+let pollTimer: number | undefined
+let saveTimer: number | undefined
 
 onMounted(async () => {
   const ok = await store.openProject(projectId.value)
@@ -42,10 +50,17 @@ onMounted(async () => {
     schemaError.value = err instanceof Error ? err.message : String(err)
   }
   void validate()
+  pdfPath.value = await api.latestOutput(projectId.value).catch(() => null)
+  const status = await api.getCompileStatus(projectId.value).catch(() => null)
+  if (status && (status.state === 'succeeded' || status.state === 'failed')) {
+    compileState.value = status.state
+    if (status.state === 'failed') compileError.value = status.error
+  }
 })
 
 onBeforeUnmount(() => {
-  window.clearTimeout(timer)
+  window.clearTimeout(saveTimer)
+  window.clearInterval(pollTimer)
 })
 
 function clone(v: Record<string, unknown>): Record<string, unknown> {
@@ -55,8 +70,8 @@ function clone(v: Record<string, unknown>): Record<string, unknown> {
 // 数据变化：防抖自动保存 + 校验
 watch(formData, () => {
   rawText.value = JSON.stringify(formData.value, null, 2)
-  window.clearTimeout(timer)
-  timer = window.setTimeout(() => {
+  window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(() => {
     void persist()
   }, 800)
 })
@@ -79,6 +94,13 @@ async function validate(): Promise<void> {
   }
 }
 
+async function validateNow(): Promise<void> {
+  await validate()
+  if (issues.value.length === 0) {
+    ElMessage.success('Schema 校验通过')
+  }
+}
+
 async function loadSample(): Promise<void> {
   if (!store.current) return
   try {
@@ -87,13 +109,6 @@ async function loadSample(): Promise<void> {
     ElMessage.success('已加载示例数据（将自动保存）')
   } catch (err) {
     ElMessage.error(err instanceof Error ? err.message : String(err))
-  }
-}
-
-async function validateNow(): Promise<void> {
-  await validate()
-  if (issues.value.length === 0) {
-    ElMessage.success('Schema 校验通过')
   }
 }
 
@@ -117,6 +132,66 @@ function exportJson(): void {
     '导出 JSON（已复制到剪贴板）',
     { dangerouslyUseHTMLString: true, confirmButtonText: '关闭' },
   )
+}
+
+// ---------- 编译与预览 ----------
+
+async function generate(): Promise<void> {
+  if (!store.current) return
+  compileStarting.value = true
+  compileError.value = null
+  try {
+    compileState.value = await api.compileDocument(projectId.value)
+    startPolling()
+  } catch (err) {
+    compileState.value = 'failed'
+    compileError.value = err as AppError
+  } finally {
+    compileStarting.value = false
+  }
+}
+
+function startPolling(): void {
+  window.clearInterval(pollTimer)
+  pollTimer = window.setInterval(async () => {
+    try {
+      const s = await api.getCompileStatus(projectId.value)
+      compileState.value = s.state
+      if (s.state === 'succeeded') {
+        window.clearInterval(pollTimer)
+        compileDuration.value = s.durationMs
+        compileError.value = null
+        pdfPath.value = s.outputPath
+        ElMessage.success(`PDF 已生成（${s.durationMs ?? 0}ms）`)
+      } else if (s.state === 'failed') {
+        window.clearInterval(pollTimer)
+        compileError.value = s.error
+      } else if (s.state === 'cancelled') {
+        window.clearInterval(pollTimer)
+        ElMessage.info('编译已取消')
+      }
+    } catch {
+      // 瞬时查询失败继续轮询
+    }
+  }, 400)
+}
+
+async function cancelCompile(): Promise<void> {
+  try {
+    await api.cancelCompile(projectId.value)
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+function openPdf(): void {
+  if (!pdfPath.value) return
+  void api.openOutputFile(pdfPath.value).catch((err) => ElMessage.error(err instanceof Error ? err.message : String(err)))
+}
+
+function revealPdf(): void {
+  if (!pdfPath.value) return
+  void api.revealInExplorer(pdfPath.value).catch((err) => ElMessage.error(err instanceof Error ? err.message : String(err)))
 }
 
 async function rebuildAndRetry(): Promise<void> {
@@ -148,6 +223,23 @@ const saveStateType = computed(() => {
   if (store.saveError) return 'danger'
   return 'success'
 })
+
+const stateTextMap: Record<CompileState, string> = {
+  idle: '待生成',
+  validating: '校验中…',
+  compiling: '编译中…',
+  succeeded: '编译成功',
+  failed: '编译失败',
+  cancelled: '已取消',
+}
+const stateTagMap: Record<CompileState, string> = {
+  idle: 'info',
+  validating: 'info',
+  compiling: 'warning',
+  succeeded: 'success',
+  failed: 'danger',
+  cancelled: 'info',
+}
 </script>
 
 <template>
@@ -179,6 +271,7 @@ const saveStateType = computed(() => {
     </el-alert>
 
     <template v-if="store.current">
+      <!-- 表单卡片 -->
       <el-card shadow="never">
         <template #header>
           <div class="editor-header">
@@ -220,6 +313,24 @@ const saveStateType = computed(() => {
         <el-empty v-else-if="!schemaError" description="正在加载模板 Schema…" :image-size="60" />
 
         <el-collapse v-model="rawVisible" class="raw-collapse">
+          <el-collapse-item title="Typst 语法速查" name="cheatsheet">
+            <pre class="cheatsheet mono">== 二级标题        === 三级标题
+- 无序列表        1. 有序列表
+*加粗*            _斜体_           `等宽代码`
+
+#table(
+  columns: 2,
+  table.header([*列一*], [*列二*]),
+  [值], [值],
+)
+
+#figure(
+  image("assets/图片.png", width: 10cm),
+  caption: [图注文字],
+)
+
+#pagebreak()      // 分页</pre>
+          </el-collapse-item>
           <el-collapse-item title="原始 JSON（高级）" name="raw">
             <el-input
               v-model="rawText"
@@ -233,6 +344,72 @@ const saveStateType = computed(() => {
             </div>
           </el-collapse-item>
         </el-collapse>
+      </el-card>
+
+      <!-- 编译与预览卡片 -->
+      <el-card shadow="never">
+        <template #header>
+          <div class="editor-header">
+            <span>PDF 生成与预览（内置 Typst sidecar）</span>
+            <div class="editor-actions">
+              <el-button
+                size="small"
+                type="primary"
+                :loading="compileStarting || compileState === 'compiling'"
+                @click="generate"
+              >
+                生成 PDF
+              </el-button>
+              <el-button v-if="compileState === 'compiling'" size="small" type="warning" @click="cancelCompile">
+                取消编译
+              </el-button>
+              <el-button v-if="pdfPath" size="small" @click="openPdf">打开 PDF 文件</el-button>
+              <el-button v-if="pdfPath" size="small" @click="revealPdf">所在文件夹</el-button>
+            </div>
+          </div>
+        </template>
+
+        <div class="compile-status">
+          <el-tag :type="(stateTagMap[compileState] as any)" effect="dark">
+            {{ stateTextMap[compileState] }}
+          </el-tag>
+          <span v-if="compileDuration !== null" class="hint">上次编译耗时 {{ compileDuration }}ms</span>
+          <span v-if="pdfPath" class="mono hint">{{ pdfPath }}</span>
+        </div>
+
+        <el-alert
+          v-if="compileError"
+          type="error"
+          show-icon
+          :closable="false"
+          class="block-alert"
+          :title="`${errorKindText(compileError.kind)}：${compileError.message}`"
+        >
+          <el-table
+            v-if="compileError.diagnostics?.length"
+            :data="compileError.diagnostics"
+            size="small"
+            class="diag-table"
+          >
+            <el-table-column label="级别" width="90">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.severity === 'error' ? 'danger' : 'warning'">{{ row.severity }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="message" label="错误内容" min-width="220" />
+            <el-table-column label="文件 / 行号" width="240">
+              <template #default="{ row }">
+                <span class="mono">{{ row.file ?? '—' }}{{ row.line ? `:${row.line}:${row.column ?? 0}` : '' }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <details v-if="compileError.stderr" class="stderr-box">
+            <summary>完整编译器输出</summary>
+            <pre class="mono">{{ compileError.stderr }}</pre>
+          </details>
+        </el-alert>
+
+        <PdfViewer :path="pdfPath" />
       </el-card>
     </template>
 
@@ -280,6 +457,7 @@ const saveStateType = computed(() => {
 .editor-actions {
   display: flex;
   gap: 0;
+  flex-wrap: wrap;
 }
 
 .block-alert {
@@ -304,6 +482,16 @@ const saveStateType = computed(() => {
   border-top: 1px dashed var(--el-border-color-lighter);
 }
 
+.cheatsheet {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  background: var(--el-fill-color-lighter);
+  padding: 10px 12px;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
 .raw-editor :deep(textarea) {
   font-family: Consolas, 'Courier New', monospace;
   font-size: 13px;
@@ -314,5 +502,46 @@ const saveStateType = computed(() => {
   margin-top: 8px;
   display: flex;
   justify-content: flex-end;
+}
+
+.compile-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.compile-status .hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  word-break: break-all;
+}
+
+.mono {
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.diag-table {
+  margin-top: 10px;
+}
+
+.stderr-box {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.stderr-box summary {
+  cursor: pointer;
+  color: var(--el-color-primary);
+}
+
+.stderr-box pre {
+  max-height: 220px;
+  overflow: auto;
+  background: var(--el-fill-color);
+  padding: 8px;
+  border-radius: 4px;
+  white-space: pre-wrap;
 }
 </style>

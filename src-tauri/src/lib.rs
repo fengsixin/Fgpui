@@ -3,6 +3,7 @@
 //! 阶段 0 范围：统一错误结构、日志结构、Typst CLI sidecar 封装与编译自检。
 
 pub mod commands;
+pub mod compiler;
 pub mod db;
 pub mod error;
 pub mod logging;
@@ -67,6 +68,7 @@ pub fn run() {
 
     // 3) 启动 Tauri 应用（运行错误优雅退出，不 panic）
     let app_result = tauri::Builder::default()
+        .manage(commands::compile::AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::dev::check_typst,
             commands::dev::run_typst_smoke_test,
@@ -83,6 +85,12 @@ pub fn run() {
             commands::templates::get_template_sample,
             commands::templates::import_template,
             commands::templates::validate_document_data,
+            commands::compile::compile_document,
+            commands::compile::cancel_compile,
+            commands::compile::get_compile_status,
+            commands::compile::latest_output,
+            commands::compile::open_output_file,
+            commands::compile::read_pdf_bytes,
         ])
         .run(tauri::generate_context!());
 

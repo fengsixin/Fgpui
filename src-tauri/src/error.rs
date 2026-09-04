@@ -37,6 +37,11 @@ pub enum AppError {
         message: String,
         timeout_secs: u64,
     },
+    /// 编译被用户取消。
+    #[error("{message}")]
+    Cancelled {
+        message: String,
+    },
     /// 本地 SQLite 索引损坏，需要重建（文件层 project.json 是事实来源）。
     #[error("{message}")]
     DbCorrupted {
@@ -121,6 +126,12 @@ impl AppError {
         }
     }
 
+    pub fn cancelled() -> Self {
+        Self::Cancelled {
+            message: "编译已取消".into(),
+        }
+    }
+
     pub fn db_corrupted(detail: impl Into<String>) -> Self {
         Self::DbCorrupted {
             message: "本地项目索引数据库损坏".into(),
@@ -198,6 +209,7 @@ impl AppError {
             Self::TypstVersionCheckFailed { .. } => "typst_version_check_failed",
             Self::CompileFailed { .. } => "compile_failed",
             Self::CompileTimeout { .. } => "compile_timeout",
+            Self::Cancelled { .. } => "cancelled",
             Self::DbCorrupted { .. } => "db_corrupted",
             Self::ProjectNotFound { .. } => "project_not_found",
             Self::ProjectFilesMissing { .. } => "project_files_missing",

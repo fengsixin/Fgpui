@@ -29,6 +29,8 @@ const options = computed(() =>
 const isTextarea = computed(
   () => props.schema?.format === 'textarea' || ((props.schema?.maxLength as number) ?? 0) > 100,
 )
+/** 代码编辑（Typst 源码等）：等宽、多行 */
+const isCode = computed(() => props.schema?.format === 'code' || props.schema?.['x-ui'] === 'code')
 const type = computed(() => inferType(props.schema))
 const isEmpty = computed(
   () => props.modelValue === undefined || props.modelValue === null || props.modelValue === '',
@@ -150,7 +152,17 @@ function setItem(index: number, value: unknown): void {
       <span class="label">{{ label }}<span v-if="required" class="req">*</span></span>
     </div>
     <el-input
-      v-if="isTextarea"
+      v-if="isCode"
+      type="textarea"
+      :rows="14"
+      spellcheck="false"
+      class="code-editor"
+      :model-value="(modelValue as string) ?? ''"
+      :placeholder="hint || undefined"
+      @update:model-value="update($event || undefined)"
+    />
+    <el-input
+      v-else-if="isTextarea"
       type="textarea"
       :rows="3"
       :model-value="(modelValue as string) ?? ''"
@@ -233,6 +245,12 @@ function setItem(index: number, value: unknown): void {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   margin: 2px 0 4px;
+}
+
+.code-editor :deep(textarea) {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .empty {

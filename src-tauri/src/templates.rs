@@ -190,7 +190,8 @@ pub fn import_template(templates_root: &Path, source: &Path) -> AppResult<Templa
     Ok(manifest)
 }
 
-/// 把内置模板包同步到工作区（不覆盖已存在的包），返回新同步数量。
+/// 把内置模板包同步到工作区；已存在的包按 manifest 版本决定是否更新
+/// （开发者维护模板：版本变化即覆盖，用户不直接修改模板包）。返回同步数量。
 pub fn sync_bundled_templates(bundled_root: Option<&Path>, templates_root: &Path) -> AppResult<usize> {
     let Some(src) = bundled_root else {
         return Ok(0);
@@ -205,7 +206,20 @@ pub fn sync_bundled_templates(bundled_root: Option<&Path>, templates_root: &Path
             continue;
         }
         let dest = templates_root.join(entry.file_name());
-        if !dest.exists() {
+        let needs_sync = if !dest.exists() {
+            true
+        } else {
+            // 版本不同 → 覆盖更新
+            match (read_manifest(&dest.join("manifest.json")), read_manifest(&pkg.join("manifest.json"))) {
+                (Ok(old), Ok(new)) => old.version != new.version,
+                _ => false, // 目标 manifest 损坏时不覆盖（保护现场，由重建/手动处理）
+            }
+        };
+        if needs_sync {
+            if dest.exists() {
+                std::fs::remove_dir_all(&dest)
+                    .map_err(|e| AppError::io(format!("清理旧模板失败 {}", dest.display()), e))?;
+            }
             copy_dir_recursive(&pkg, &dest)?;
             synced += 1;
         }

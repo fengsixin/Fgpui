@@ -11,54 +11,11 @@
     "date": { "type": "string", "title": "编写日期" },
     "classification": { "type": "string", "title": "密级", "enum": ["公开", "内部", "秘密"], "default": "内部" },
     "summary": { "type": "string", "title": "摘要", "format": "textarea" },
-    "background": { "type": "string", "title": "背景与目标", "format": "textarea" },
-    "chapters": {
-      "type": "array",
-      "title": "章节",
-      "description": "按顺序渲染为多级标题章节，可包含正文、表格与图片",
-      "items": {
-        "type": "object",
-        "title": "章节",
-        "required": ["heading"],
-        "properties": {
-          "heading": { "type": "string", "title": "章节标题", "minLength": 1 },
-          "level": { "type": "integer", "title": "标题级别", "enum": [1, 2, 3], "default": 2 },
-          "content": { "type": "string", "title": "正文", "format": "textarea" },
-          "table": {
-            "type": "object",
-            "title": "表格",
-            "properties": {
-              "caption": { "type": "string", "title": "表格标题" },
-              "columns": { "type": "array", "title": "列名", "items": { "type": "string" } },
-              "rows": {
-                "type": "array",
-                "title": "数据行",
-                "items": {
-                  "type": "object",
-                  "title": "行",
-                  "properties": {
-                    "cells": { "type": "array", "title": "单元格", "items": { "type": "string" } }
-                  }
-                }
-              }
-            }
-          },
-          "images": {
-            "type": "array",
-            "title": "图片",
-            "items": {
-              "type": "object",
-              "title": "图片",
-              "required": ["path"],
-              "properties": {
-                "path": { "type": "string", "title": "图片路径（相对模板编译目录）", "minLength": 1 },
-                "caption": { "type": "string", "title": "图注" },
-                "widthCm": { "type": "number", "title": "宽度（cm）", "default": 10, "minimum": 2, "maximum": 16 }
-              }
-            }
-          }
-        }
-      }
+    "body": {
+      "type": "string",
+      "title": "正文（Typst 源码）",
+      "description": "直接书写 Typst 标记：== 二级标题、- 列表、#table(...)、#image(...)、*加粗* 等",
+      "format": "code"
     }
   }
 }

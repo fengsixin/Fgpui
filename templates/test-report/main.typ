@@ -69,3 +69,9 @@
 
 == 测试结论
 #data.conclusion
+
+#let extra = data.at("body", default: "")
+#if extra != "" [
+  == 补充说明
+  #eval(extra, mode: "markup")
+]
