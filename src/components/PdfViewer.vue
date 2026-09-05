@@ -53,10 +53,13 @@ async function load(path: string): Promise<void> {
   error.value = null
   try {
     stage.value = '读取 PDF 字节…'
-    const bytes = await readPdfBytes(path)
+    const b64 = await readPdfBytes(path)
     if (seq !== renderSeq) return
     stage.value = '解析文档…'
-    const data = new Uint8Array(bytes)
+    // base64 → 二进制（不经过 JSON 数字数组，避免大文件 IPC 膨胀）
+    const binary = atob(b64)
+    const data = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i)
     const doc = await pdfjsLib.getDocument({ data }).promise
     if (seq !== renderSeq) return
     pageCount.value = doc.numPages

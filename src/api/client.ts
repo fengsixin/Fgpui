@@ -128,8 +128,8 @@ export function openOutputFile(path: string): Promise<void> {
   return invoke('open_output_file', { path })
 }
 
-/** 读取 PDF 字节（PDF.js 内嵌预览） */
-export function readPdfBytes(path: string): Promise<number[]> {
+/** 读取 PDF 字节（base64；PDF.js 内嵌预览） */
+export function readPdfBytes(path: string): Promise<string> {
   return invoke('read_pdf_bytes', { path })
 }
 

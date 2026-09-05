@@ -415,9 +415,10 @@ pub async fn open_output_file(path: String) -> AppResult<()> {
     Ok(())
 }
 
-/// 读取 PDF 字节（前端 PDF.js 用 Blob 渲染，无需外部浏览器）。
+/// 读取 PDF 字节（base64 编码返回；前端 PDF.js 用 Blob 渲染，无需外部浏览器）。
 #[tauri::command]
-pub async fn read_pdf_bytes(path: String) -> AppResult<Vec<u8>> {
+pub async fn read_pdf_bytes(path: String) -> AppResult<String> {
+    use base64::Engine;
     let target = PathBuf::from(&path);
     if !target.is_file() {
         return Err(AppError::io_detail(format!("文件不存在：{path}"), "read_pdf_bytes".to_string()));
@@ -425,7 +426,9 @@ pub async fn read_pdf_bytes(path: String) -> AppResult<Vec<u8>> {
     if !target.extension().map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false) {
         return Err(AppError::validation("仅允许读取 PDF 文件"));
     }
-    std::fs::read(&target).map_err(|e| AppError::io(format!("读取 PDF 失败 {path}"), e))
+    let bytes = std::fs::read(&target)
+        .map_err(|e| AppError::io(format!("读取 PDF 失败 {path}"), e))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
 #[cfg(test)]

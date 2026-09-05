@@ -204,7 +204,7 @@ function showWorkspacePath(): void {
       >
         <el-table-column prop="name" label="项目名称" min-width="220">
           <template #default="{ row }">
-            <el-link type="primary" :underline="false" @click="openProject(row.id)">{{ row.name }}</el-link>
+            <el-link type="primary" underline="never" @click="openProject(row.id)">{{ row.name }}</el-link>
           </template>
         </el-table-column>
         <el-table-column label="文档类型" width="140">
