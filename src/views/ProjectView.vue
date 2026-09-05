@@ -54,6 +54,8 @@ onMounted(async () => {
   void validate()
   pdfPath.value = await api.latestOutput(projectId.value).catch(() => null)
   void refreshGenerations()
+  // 已有成功产物时默认展示预览页签
+  if (pdfPath.value) activeTab.value = 'preview'
   const status = await api.getCompileStatus(projectId.value).catch(() => null)
   if (status && (status.state === 'succeeded' || status.state === 'failed')) {
     compileState.value = status.state
@@ -137,6 +139,9 @@ function exportJson(): void {
   )
 }
 
+// 页签：表单 / PDF 预览（预览为一级界面，编译成功自动切换）
+const activeTab = ref<'form' | 'preview'>('form')
+
 // 生成历史（阶段 5）
 const generations = ref<GenerationRecord[]>([])
 const generationsLoading = ref(false)
@@ -166,6 +171,7 @@ async function recompileSnapshot(generation: GenerationRecord): Promise<void> {
     const newGen = await api.recompileGeneration(projectId.value, generation.id)
     ElMessage.success('已按历史快照重新生成（可复现）')
     pdfPath.value = newGen.outputPath
+    activeTab.value = 'preview'
     await refreshGenerations()
   } catch (err) {
     ElMessage.error(formatAppError(err))
@@ -287,6 +293,7 @@ function startPolling(): void {
         compileDuration.value = s.durationMs
         compileError.value = null
         pdfPath.value = s.outputPath
+        activeTab.value = 'preview'
         ElMessage.success(`PDF 已生成（${s.durationMs ?? 0}ms）`)
         void refreshGenerations()
       } else if (s.state === 'failed') {
@@ -397,6 +404,10 @@ const stateTagMap: Record<CompileState, string> = {
     </el-alert>
 
     <template v-if="store.current">
+      <el-tabs v-model="activeTab" class="work-tabs">
+        <!-- 表单页签 -->
+        <el-tab-pane name="form">
+        <template #label>表单与数据</template>
       <!-- 表单卡片 -->
       <el-card shadow="never">
         <template #header>
@@ -474,7 +485,11 @@ const stateTagMap: Record<CompileState, string> = {
           </el-collapse-item>
         </el-collapse>
       </el-card>
+        </el-tab-pane>
 
+        <!-- PDF 预览页签 -->
+        <el-tab-pane name="preview">
+          <template #label>PDF 预览</template>
       <!-- 编译与预览卡片 -->
       <el-card shadow="never">
         <template #header>
@@ -584,6 +599,8 @@ const stateTagMap: Record<CompileState, string> = {
           </el-collapse-item>
         </el-collapse>
       </el-card>
+        </el-tab-pane>
+      </el-tabs>
     </template>
 
     <!-- 导入预览对话框 -->
