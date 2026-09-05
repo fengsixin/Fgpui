@@ -36,11 +36,19 @@ fn technical_design_sample_compiles_to_pdf() {
     let (_guard, root) = setup_workspace();
     let created = create_with_sample(&root, "technical-design", "样例技术方案");
 
-    let result = run_compile_task(&root, &created.id, &AtomicBool::new(false)).unwrap();
+    let exec = run_compile_task(&root, &created.id, &AtomicBool::new(false)).unwrap();
+    let result = &exec.result;
     let pdf = std::fs::read(&result.output_path).unwrap();
     assert!(pdf.starts_with(b"%PDF"), "输出必须是 PDF");
     assert!(pdf.len() > 1000, "PDF 过小: {} bytes", pdf.len());
     assert!(!result.warnings.iter().any(|w| w.severity == "error"));
+    // 生成记录应登记（可追溯）
+    assert!(exec.generation.id.starts_with("gen-"));
+    assert!(exec.generation.template_version.starts_with("1."));
+    assert!(exec.generation.typst_version.as_deref().unwrap_or_default().contains("0.15"));
+    assert!(exec.generation.page_count.unwrap_or(0) >= 1, "PDF 页数检查");
+    // 输入快照存在（可复现依据）
+    assert!(root.join("projects").join(&created.id).join("history").join(format!("{}.json", exec.generation.id)).is_file());
 }
 
 #[test]
@@ -48,7 +56,7 @@ fn test_report_sample_compiles_to_pdf() {
     let (_guard, root) = setup_workspace();
     let created = create_with_sample(&root, "test-report", "样例测试报告");
 
-    let result = run_compile_task(&root, &created.id, &AtomicBool::new(false)).unwrap();
+    let result = run_compile_task(&root, &created.id, &AtomicBool::new(false)).unwrap().result;
     let pdf = std::fs::read(&result.output_path).unwrap();
     assert!(pdf.starts_with(b"%PDF"));
 }
@@ -88,7 +96,7 @@ fn compile_failure_locates_error_and_keeps_previous_output() {
         .map(|e| e.file_name().to_string_lossy().to_string())
         .collect();
     assert_eq!(names.len(), 1, "失败不得新增输出文件: {names:?}");
-    assert!(out_dir.join(std::path::Path::new(&ok.output_path).file_name().unwrap()).is_file());
+    assert!(out_dir.join(std::path::Path::new(&ok.result.output_path).file_name().unwrap()).is_file());
 }
 
 #[test]

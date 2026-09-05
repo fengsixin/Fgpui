@@ -47,6 +47,14 @@ pub struct TemplateInfo {
     pub manifest: Option<TemplateManifest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// 发布登记状态："ok" | "drifted" | "unregistered"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry_status: Option<String>,
+}
+
+/// 模板包校验和（发布后不可变的判定依据）。
+pub fn package_checksum(dir: &Path) -> Option<String> {
+    crate::hash::dir_checksum(dir)
 }
 
 /// 工作区模板目录。
@@ -86,7 +94,8 @@ pub fn validate_package(dir: &Path, manifest: &TemplateManifest) -> Result<(), S
 }
 
 /// 扫描模板目录（单个包损坏不影响其他包，以 error 字段报告）。
-pub fn scan_templates(templates_root: &Path) -> Vec<TemplateInfo> {
+/// `registry`：可选的发布登记表 —— 已发布的包按校验和做防篡改校验。
+pub fn scan_templates(templates_root: &Path, registry: Option<&crate::db::ProjectIndex>) -> Vec<TemplateInfo> {
     let mut out = Vec::new();
     let Ok(entries) = std::fs::read_dir(templates_root) else {
         return out;
@@ -106,6 +115,7 @@ pub fn scan_templates(templates_root: &Path) -> Vec<TemplateInfo> {
                 dir_name,
                 manifest: None,
                 error: Some("缺少 manifest.json（不是模板包）".to_string()),
+                registry_status: None,
             });
             continue;
         }
@@ -113,12 +123,51 @@ pub fn scan_templates(templates_root: &Path) -> Vec<TemplateInfo> {
             validate_package(&path, &m).map_err(AppError::template_invalid)?;
             Ok(m)
         }) {
-            Ok(manifest) => out.push(TemplateInfo { dir_name, manifest: Some(manifest), error: None }),
-            Err(e) => out.push(TemplateInfo { dir_name, manifest: None, error: Some(e.to_string()) }),
+            Ok(manifest) => {
+                // 发布登记校验：校验和漂移 = 模板被原地修改
+                let mut registry_status: Option<String> = None;
+                let mut error: Option<String> = None;
+                if let Some(db) = registry {
+                    let registered = db.registry_get(&manifest.id).ok().flatten();
+                    registry_status = Some(match registered {
+                        Some((reg_version, reg_checksum, _)) => {
+                            if reg_checksum != package_checksum(&path).unwrap_or_default() {
+                                error = Some(format!(
+                                    "模板已被原地修改（与发布登记的校验和不符）。如确需修改，请在模板管理中重新发布（登记版本 {}）",
+                                    reg_version
+                                ));
+                                "drifted".to_string()
+                            } else {
+                                "ok".to_string()
+                            }
+                        }
+                        None => "unregistered".to_string(),
+                    });
+                }
+                out.push(TemplateInfo { dir_name, manifest: Some(manifest), error, registry_status });
+            }
+            Err(e) => out.push(TemplateInfo {
+                dir_name,
+                manifest: None,
+                error: Some(e.to_string()),
+                registry_status: None,
+            }),
         }
     }
     out.sort_by(|a, b| a.dir_name.cmp(&b.dir_name));
     out
+}
+
+/// 发布模板：把当前版本的校验和写入登记表（此后原地修改会被检测）。
+pub fn publish_template_core(workspace: &Path, template_id: &str) -> AppResult<(String, String)> {
+    crate::project::validate_project_id(template_id)?;
+    let (dir, manifest) = get_template_by_id(&templates_dir(workspace), template_id)?;
+    let checksum = package_checksum(&dir)
+        .ok_or_else(|| AppError::template_invalid("模板包为空，无法发布"))?;
+    let db = crate::db::ProjectIndex::open(&workspace.join("index.db"))?;
+    db.registry_upsert(template_id, &manifest.version, &checksum, "published")?;
+    tracing::info!(id = %template_id, version = %manifest.version, checksum = %checksum, "模板已发布登记");
+    Ok((manifest.version.clone(), checksum))
 }
 
 /// 按 id 取模板包（目录 + manifest）。

@@ -27,6 +27,7 @@ onMounted(() => {
       </div>
       <el-menu mode="horizontal" router :default-active="route.path" class="app-nav" :ellipsis="false">
         <el-menu-item index="/">项目管理</el-menu-item>
+        <el-menu-item index="/qa">模板质量</el-menu-item>
         <el-menu-item index="/env">环境自检</el-menu-item>
       </el-menu>
       <div class="app-header-right">

@@ -280,6 +280,18 @@ pub fn parse_diagnostics(stderr: &str) -> Vec<Diagnostic> {
     diagnostics
 }
 
+/// Typst 版本（进程内只查询一次并缓存）。
+pub fn typst_version_cached() -> String {
+    static VERSION: OnceLock<String> = OnceLock::new();
+    VERSION
+        .get_or_init(|| {
+            resolve_typst_exe()
+                .and_then(|exe| version(&exe))
+                .unwrap_or_else(|_| "unknown".to_string())
+        })
+        .clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

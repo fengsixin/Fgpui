@@ -2,10 +2,12 @@
 //!
 //! 阶段 0 范围：统一错误结构、日志结构、Typst CLI sidecar 封装与编译自检。
 
+pub mod backup;
 pub mod commands;
 pub mod compiler;
 pub mod db;
 pub mod error;
+pub mod hash;
 pub mod import;
 pub mod logging;
 pub mod paths;
@@ -97,6 +99,14 @@ pub fn run() {
             commands::import::import_json_data,
             commands::import::import_project_asset,
             commands::import::assert_file_exists,
+            commands::compile::list_generations,
+            commands::compile::recompile_generation,
+            commands::templates::publish_template,
+            commands::backup::export_project_backup,
+            commands::backup::import_project_backup,
+            commands::qa::compile_template_sample,
+            commands::qa::save_qa_baseline,
+            commands::qa::get_qa_baseline,
         ])
         .run(tauri::generate_context!());
 

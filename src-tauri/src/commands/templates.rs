@@ -16,12 +16,25 @@ fn templates_root() -> AppResult<std::path::PathBuf> {
     Ok(dir)
 }
 
-/// 扫描模板目录（含损坏包与错误信息）。
+/// 扫描模板目录（含损坏包与错误信息、发布登记状态）。
 #[tauri::command]
 pub async fn list_templates() -> AppResult<Vec<TemplateInfo>> {
     tauri::async_runtime::spawn_blocking(|| -> AppResult<Vec<TemplateInfo>> {
+        let workspace = paths::workspace_root()?;
         let root = templates_root()?;
-        Ok(templates::scan_templates(&root))
+        let db = crate::db::ProjectIndex::open(&workspace.join("index.db"))?;
+        Ok(templates::scan_templates(&root, Some(&db)))
+    })
+    .await
+    .map_err(crate::commands::join_error_to_app_error)?
+}
+
+/// 发布模板：登记当前版本的校验和（此后原地修改会被检测为 drifted）。
+#[tauri::command]
+pub async fn publish_template(template_id: String) -> AppResult<(String, String)> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let workspace = paths::workspace_root()?;
+        templates::publish_template_core(&workspace, &template_id)
     })
     .await
     .map_err(crate::commands::join_error_to_app_error)?

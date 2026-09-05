@@ -21,6 +21,12 @@ const router = createRouter({
       component: () => import('@/views/HomeView.vue'),
       meta: { phaseTitle: '阶段 0 · 环境自检' },
     },
+    {
+      path: '/qa',
+      name: 'qa',
+      component: () => import('@/views/QaView.vue'),
+      meta: { phaseTitle: '阶段 5 · 模板质量' },
+    },
   ],
 })
 

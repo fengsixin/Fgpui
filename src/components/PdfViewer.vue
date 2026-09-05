@@ -33,6 +33,13 @@ onBeforeUnmount(() => {
   renderSeq++ // 使进行中的渲染失效
 })
 
+/** 暴露已渲染页面 canvas（视觉回归截图用） */
+function getCanvases(): HTMLCanvasElement[] {
+  return container.value ? Array.from(container.value.querySelectorAll('canvas')) : []
+}
+
+defineExpose({ getCanvases })
+
 async function load(path: string): Promise<void> {
   const seq = ++renderSeq
   loading.value = true

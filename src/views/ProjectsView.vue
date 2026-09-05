@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Delete, Folder, MagicStick, Plus, Refresh, Upload } from '@element-plus/icons-vue'
+import { Delete, Download, Folder, MagicStick, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
+import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { formatAppError } from '@/stores/appStore'
 import { docTypeText } from '@/api/types'
+import * as api from '@/api/client'
 
 const router = useRouter()
 const store = useProjectsStore()
@@ -15,6 +16,7 @@ const createVisible = ref(false)
 const creating = ref(false)
 const rebuilding = ref(false)
 const importing = ref(false)
+const exporting = ref(false)
 const form = ref({ name: '', templateId: 'technical-design' })
 
 /** 可用模板（有效包） */
@@ -106,6 +108,45 @@ async function confirmDelete(id: string): Promise<void> {
   }
 }
 
+/** 导出项目备份包 */
+async function exportBackup(id: string, name: string): Promise<void> {
+  const dest = await saveFileDialog({
+    title: '导出项目备份包',
+    defaultPath: `FgpuiBackup-${name}-${new Date().toISOString().slice(0, 10)}.fgpui.zip`,
+    filters: [{ name: '备份包', extensions: ['zip'] }],
+  })
+  if (!dest || typeof dest !== 'string') return
+  exporting.value = true
+  try {
+    const path = await api.exportProjectBackup(id, dest)
+    ElMessage.success(`备份已导出：${path}`)
+  } catch (err) {
+    ElMessage.error(formatAppError(err))
+  } finally {
+    exporting.value = false
+  }
+}
+
+/** 导入项目备份包 */
+async function importBackup(): Promise<void> {
+  const zip = await openFileDialog({
+    multiple: false,
+    title: '选择项目备份包',
+    filters: [{ name: '备份包', extensions: ['zip'] }],
+  })
+  if (!zip || typeof zip !== 'string') return
+  importing.value = true
+  try {
+    const restored = await api.importProjectBackup(zip)
+    await store.refreshList()
+    ElMessage.success(`备份已恢复为项目「${restored.name}」（新 ID，不覆盖现有项目）`)
+  } catch (err) {
+    ElMessage.error(formatAppError(err))
+  } finally {
+    importing.value = false
+  }
+}
+
 function showWorkspacePath(): void {
   const root = store.workspaceInfo?.root
   if (root) {
@@ -126,6 +167,9 @@ function showWorkspacePath(): void {
           </el-tooltip>
           <el-tooltip content="从本地目录导入模板包（目录内需含 manifest.json）" placement="bottom">
             <el-button :icon="Upload" :loading="importing" @click="importTemplate">导入模板</el-button>
+          </el-tooltip>
+          <el-tooltip content="从备份包恢复项目（分配新 ID，不覆盖现有项目）" placement="bottom">
+            <el-button :icon="Download" :loading="importing" @click="importBackup">导入备份</el-button>
           </el-tooltip>
         </div>
         <el-tag
@@ -183,7 +227,7 @@ function showWorkspacePath(): void {
             <el-tag v-else type="danger" size="small">文件缺失</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="170" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button
               size="small"
@@ -205,6 +249,16 @@ function showWorkspacePath(): void {
                 <el-button size="small" type="danger" link :icon="Delete">删除</el-button>
               </template>
             </el-popconfirm>
+            <el-tooltip content="导出项目备份包（zip，可在其他机器恢复）" placement="top">
+              <el-button
+                size="small"
+                link
+                :loading="exporting"
+                @click="exportBackup(row.id, row.name)"
+              >
+                备份
+              </el-button>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>

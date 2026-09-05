@@ -6,7 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { docTypeText, errorKindText } from '@/api/types'
-import type { AppError, CompileState, ImportPreview, SchemaIssue } from '@/api/types'
+import type { AppError, CompileState, GenerationRecord, ImportPreview, SchemaIssue } from '@/api/types'
 import { formatAppError } from '@/stores/appStore'
 import * as api from '@/api/client'
 import SchemaForm from '@/components/SchemaForm.vue'
@@ -53,6 +53,7 @@ onMounted(async () => {
   }
   void validate()
   pdfPath.value = await api.latestOutput(projectId.value).catch(() => null)
+  void refreshGenerations()
   const status = await api.getCompileStatus(projectId.value).catch(() => null)
   if (status && (status.state === 'succeeded' || status.state === 'failed')) {
     compileState.value = status.state
@@ -134,6 +135,41 @@ function exportJson(): void {
     '导出 JSON（已复制到剪贴板）',
     { dangerouslyUseHTMLString: true, confirmButtonText: '关闭' },
   )
+}
+
+// 生成历史（阶段 5）
+const generations = ref<GenerationRecord[]>([])
+const generationsLoading = ref(false)
+const historyVisible = ref<string[]>([])
+
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('zh-CN', { hour12: false })
+}
+
+async function refreshGenerations(): Promise<void> {
+  if (!store.current) return
+  generationsLoading.value = true
+  try {
+    generations.value = await api.listGenerations(projectId.value)
+  } catch {
+    generations.value = []
+  } finally {
+    generationsLoading.value = false
+  }
+}
+
+async function recompileSnapshot(generation: GenerationRecord): Promise<void> {
+  try {
+    const newGen = await api.recompileGeneration(projectId.value, generation.id)
+    ElMessage.success('已按历史快照重新生成（可复现）')
+    pdfPath.value = newGen.outputPath
+    await refreshGenerations()
+  } catch (err) {
+    ElMessage.error(formatAppError(err))
+  }
 }
 
 // 导入预览（阶段 4）
@@ -252,6 +288,7 @@ function startPolling(): void {
         compileError.value = null
         pdfPath.value = s.outputPath
         ElMessage.success(`PDF 已生成（${s.durationMs ?? 0}ms）`)
+        void refreshGenerations()
       } else if (s.state === 'failed') {
         window.clearInterval(pollTimer)
         compileError.value = s.error
@@ -502,6 +539,50 @@ const stateTagMap: Record<CompileState, string> = {
         </el-alert>
 
         <PdfViewer :path="pdfPath" />
+
+        <el-collapse v-model="historyVisible" class="raw-collapse">
+          <el-collapse-item title="生成历史（可追溯 / 可重现）" name="history">
+            <el-table
+              :data="generations"
+              size="small"
+              v-loading="generationsLoading"
+              empty-text="暂无生成记录"
+              max-height="260"
+            >
+              <el-table-column label="时间" width="170">
+                <template #default="{ row }">{{ fmtDate(row.createdAt) }}</template>
+              </el-table-column>
+              <el-table-column label="模板版本" width="100">
+                <template #default="{ row }">{{ row.templateVersion }}</template>
+              </el-table-column>
+              <el-table-column label="页数" width="70">
+                <template #default="{ row }">{{ row.pageCount ?? '—' }}</template>
+              </el-table-column>
+              <el-table-column label="来源" width="80">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="row.cacheHit ? 'success' : 'info'">
+                    {{ row.cacheHit ? '缓存' : '编译' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="数据摘要" width="130">
+                <template #default="{ row }">
+                  <span class="mono">{{ (row.dataHash ?? '').slice(0, 12) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" min-width="200">
+                <template #default="{ row }">
+                  <el-button size="small" link type="primary" @click="recompileSnapshot(row)">
+                    按此快照重新生成
+                  </el-button>
+                  <el-button v-if="row.outputPath" size="small" link @click="pdfPath = row.outputPath">
+                    预览
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-collapse-item>
+        </el-collapse>
       </el-card>
     </template>
 

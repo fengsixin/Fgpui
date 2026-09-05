@@ -146,6 +146,38 @@ export interface ImportPreview {
   issues: CellIssue[]
 }
 
+/** 生成记录（可追溯） */
+export interface GenerationRecord {
+  id: string
+  projectId: string
+  templateId: string
+  templateVersion: string
+  typstVersion: string | null
+  dataHash: string | null
+  fontHash: string | null
+  outputPath: string | null
+  createdAt: string
+  pageCount: number | null
+  cacheHit: boolean
+  warningsCount: number | null
+}
+
+/** 视觉回归基线 */
+export interface QaBaseline {
+  templateVersion: string
+  checksum: string
+  sourceHash: string
+  savedAt: string
+  pages: string[]
+}
+
+/** 模板样例编译结果 */
+export interface SampleCompileResult {
+  pdfPath: string
+  templateVersion: string
+  sourceHash: string
+}
+
 export const DOC_TYPE_TEXT: Record<string, string> = {
   'technical-design': '技术方案',
   'test-report': '测试报告',

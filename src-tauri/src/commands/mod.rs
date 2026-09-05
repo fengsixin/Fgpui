@@ -1,8 +1,10 @@
 //! Tauri commands（对外接口）。
+pub mod backup;
 pub mod compile;
 pub mod dev;
 pub mod import;
 pub mod projects;
+pub mod qa;
 pub mod templates;
 
 use crate::error::AppError;

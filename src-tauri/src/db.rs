@@ -35,7 +35,26 @@ CREATE TABLE IF NOT EXISTS generations (
     created_at       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_generations_project ON generations(project_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS compile_cache (
+    cache_key    TEXT PRIMARY KEY,
+    output_path  TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS template_registry (
+    id           TEXT PRIMARY KEY,
+    version      TEXT NOT NULL,
+    checksum     TEXT NOT NULL,
+    source       TEXT NOT NULL,
+    published_at TEXT NOT NULL
+);
 ";
+
+/// 增量迁移（幂等）：旧库补列，失败（已存在）忽略。
+const MIGRATIONS: &[&str] = &[
+    "ALTER TABLE generations ADD COLUMN page_count INTEGER",
+    "ALTER TABLE generations ADD COLUMN cache_hit INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE generations ADD COLUMN warnings_count INTEGER",
+];
 
 /// 判断 rusqlite 错误是否属于数据库损坏。
 pub fn is_corruption(err: &rusqlite::Error) -> bool {
@@ -83,6 +102,10 @@ impl ProjectIndex {
             .conn
             .execute_batch(SCHEMA_SQL)
             .map_err(|e| map_db_err("初始化索引表失败", e))?;
+        for migration in MIGRATIONS {
+            // 已存在列等错误忽略（幂等）
+            let _ = index.conn.execute(migration, []);
+        }
         Ok(index)
     }
 
@@ -152,6 +175,155 @@ impl ProjectIndex {
             .execute("DELETE FROM projects WHERE id = ?1", params![id])
             .map_err(|e| map_db_err("删除项目索引失败", e))?;
         Ok(())
+    }
+
+    /// 写入一条生成记录。
+    pub fn insert_generation(&self, g: &crate::commands::compile::GenerationRecord) -> AppResult<()> {
+        self.conn
+            .execute(
+                "INSERT INTO generations
+                    (id, project_id, template_id, template_version, typst_version, data_hash, font_hash, output_path, created_at, page_count, cache_hit, warnings_count)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    g.id,
+                    g.project_id,
+                    g.template_id,
+                    g.template_version,
+                    g.typst_version,
+                    g.data_hash,
+                    g.font_hash,
+                    g.output_path,
+                    g.created_at,
+                    g.page_count,
+                    g.cache_hit as i64,
+                    g.warnings_count,
+                ],
+            )
+            .map_err(|e| map_db_err("写入生成记录失败", e))?;
+        Ok(())
+    }
+
+    /// 项目的生成历史（新→旧）。
+    pub fn list_generations(&self, project_id: &str) -> AppResult<Vec<crate::commands::compile::GenerationRecord>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM generations WHERE project_id = ?1 ORDER BY created_at DESC, id DESC")
+            .map_err(|e| map_db_err("读取生成历史失败", e))?;
+        let rows = stmt
+            .query_map(params![project_id], |row| {
+                Ok(crate::commands::compile::GenerationRecord {
+                    id: row.get("id")?,
+                    project_id: row.get("project_id")?,
+                    template_id: row.get("template_id")?,
+                    template_version: row.get("template_version")?,
+                    typst_version: row.get("typst_version")?,
+                    data_hash: row.get("data_hash")?,
+                    font_hash: row.get("font_hash")?,
+                    output_path: row.get("output_path")?,
+                    created_at: row.get("created_at")?,
+                    page_count: row.get("page_count")?,
+                    cache_hit: row.get::<_, i64>("cache_hit")? != 0,
+                    warnings_count: row.get("warnings_count")?,
+                })
+            })
+            .map_err(|e| map_db_err("读取生成历史失败", e))?;
+        let mut list = Vec::new();
+        for row in rows {
+            list.push(row.map_err(|e| map_db_err("读取生成记录失败", e))?);
+        }
+        Ok(list)
+    }
+
+    /// 读取单条生成记录。
+    pub fn get_generation(&self, id: &str) -> AppResult<crate::commands::compile::GenerationRecord> {
+        let list = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT * FROM generations WHERE id = ?1")
+                .map_err(|e| map_db_err("读取生成记录失败", e))?;
+            let rows = stmt
+                .query_map(params![id], |row| {
+                    Ok(crate::commands::compile::GenerationRecord {
+                        id: row.get("id")?,
+                        project_id: row.get("project_id")?,
+                        template_id: row.get("template_id")?,
+                        template_version: row.get("template_version")?,
+                        typst_version: row.get("typst_version")?,
+                        data_hash: row.get("data_hash")?,
+                        font_hash: row.get("font_hash")?,
+                        output_path: row.get("output_path")?,
+                        created_at: row.get("created_at")?,
+                        page_count: row.get("page_count")?,
+                        cache_hit: row.get::<_, i64>("cache_hit")? != 0,
+                        warnings_count: row.get("warnings_count")?,
+                    })
+                })
+                .map_err(|e| map_db_err("读取生成记录失败", e))?;
+            let mut list = Vec::new();
+            for row in rows {
+                list.push(row.map_err(|e| map_db_err("读取生成记录失败", e))?);
+            }
+            list
+        };
+        list.into_iter().next().ok_or_else(|| AppError::internal_detail("生成记录不存在", id.to_string()))
+    }
+
+    /// 编译缓存命中查询（输出文件仍存在才返回）。
+    pub fn cache_get(&self, key: &str) -> AppResult<Option<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT output_path FROM compile_cache WHERE cache_key = ?1")
+            .map_err(|e| map_db_err("查询编译缓存失败", e))?;
+        let mut rows = stmt
+            .query_map(params![key], |row| row.get::<_, String>(0))
+            .map_err(|e| map_db_err("查询编译缓存失败", e))?;
+        if let Some(path) = rows.next().transpose().map_err(|e| map_db_err("读取编译缓存失败", e))? {
+            if Path::new(&path).is_file() {
+                return Ok(Some(path));
+            }
+        }
+        Ok(None)
+    }
+
+    /// 写入编译缓存。
+    pub fn cache_put(&self, key: &str, output_path: &str) -> AppResult<()> {
+        self.conn
+            .execute(
+                "INSERT INTO compile_cache (cache_key, output_path, created_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(cache_key) DO UPDATE SET output_path = excluded.output_path, created_at = excluded.created_at",
+                params![key, output_path, crate::project::now_iso()],
+            )
+            .map_err(|e| map_db_err("写入编译缓存失败", e))?;
+        Ok(())
+    }
+
+    /// 模板发布登记（发布即锁定校验和）。
+    pub fn registry_upsert(&self, id: &str, version: &str, checksum: &str, source: &str) -> AppResult<()> {
+        self.conn
+            .execute(
+                "INSERT INTO template_registry (id, version, checksum, source, published_at) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(id) DO UPDATE SET version = excluded.version, checksum = excluded.checksum, source = excluded.source, published_at = excluded.published_at",
+                params![id, version, checksum, source, crate::project::now_iso()],
+            )
+            .map_err(|e| map_db_err("模板登记失败", e))?;
+        Ok(())
+    }
+
+    /// 读取模板发布记录。
+    pub fn registry_get(&self, id: &str) -> AppResult<Option<(String, String, String)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT version, checksum, published_at FROM template_registry WHERE id = ?1")
+            .map_err(|e| map_db_err("读取模板登记失败", e))?;
+        let mut rows = stmt
+            .query_map(params![id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })
+            .map_err(|e| map_db_err("读取模板登记失败", e))?;
+        match rows.next() {
+            Some(r) => r.map(Some).map_err(|e| map_db_err("读取模板登记失败", e)),
+            None => Ok(None),
+        }
     }
 }
 

@@ -17,7 +17,7 @@ fn manifest_of(id: &str) -> (std::path::PathBuf, TemplateManifest) {
 
 #[test]
 fn bundled_templates_scan_clean() {
-    let infos = templates::scan_templates(&bundled_dir());
+    let infos = templates::scan_templates(&bundled_dir(), None);
     let ids: Vec<&str> = infos
         .iter()
         .filter(|i| i.manifest.is_some() && i.error.is_none())
@@ -100,7 +100,7 @@ fn broken_template_packages_are_flagged_not_fatal() {
     std::fs::create_dir_all(&bad).unwrap();
     std::fs::write(bad.join("manifest.json"), r#"{"id":"broken-tpl","entry":"no.typ"}"#).unwrap();
 
-    let infos = templates::scan_templates(&troot);
+    let infos = templates::scan_templates(&troot, None);
     assert_eq!(infos.len(), 2, "应同时列出正常包与坏包");
     let broken = infos.iter().find(|i| i.dir_name == "broken-tpl").unwrap();
     assert!(broken.error.is_some(), "坏包应带错误说明");

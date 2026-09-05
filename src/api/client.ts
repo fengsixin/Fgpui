@@ -1,10 +1,13 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   CompileState,
+  GenerationRecord,
   ImportPreview,
   Project,
   ProjectDetail,
   ProjectSummary,
+  QaBaseline,
+  SampleCompileResult,
   SchemaIssue,
   SessionSnapshot,
   SmokeTestResult,
@@ -150,4 +153,51 @@ export function importProjectAsset(projectId: string, filePath: string): Promise
 /** 快速校验文件存在 */
 export function assertFileExists(path: string): Promise<void> {
   return invoke('assert_file_exists', { path })
+}
+
+// ---------- 阶段 5：追溯与质量 ----------
+
+/** 项目的生成历史（新→旧） */
+export function listGenerations(projectId: string): Promise<GenerationRecord[]> {
+  return invoke('list_generations', { projectId })
+}
+
+/** 用历史快照重新编译，返回新生成记录 */
+export function recompileGeneration(projectId: string, generationId: string): Promise<GenerationRecord> {
+  return invoke('recompile_generation', { projectId, generationId })
+}
+
+/** 发布模板（登记校验和，此后原地修改会被检测） */
+export function publishTemplate(templateId: string): Promise<[string, string]> {
+  return invoke('publish_template', { templateId })
+}
+
+/** 导出项目备份包 */
+export function exportProjectBackup(projectId: string, destPath: string): Promise<string> {
+  return invoke('export_project_backup', { projectId, destPath })
+}
+
+/** 导入项目备份包（分配新项目 ID） */
+export function importProjectBackup(zipPath: string): Promise<Project> {
+  return invoke('import_project_backup', { zipPath })
+}
+
+/** 用模板示例数据编译样例 PDF */
+export function compileTemplateSample(templateId: string): Promise<SampleCompileResult> {
+  return invoke('compile_template_sample', { templateId })
+}
+
+/** 保存视觉基线（页面 PNG base64 数组） */
+export function saveQaBaseline(
+  templateId: string,
+  version: string,
+  pages: string[],
+  sourceHash: string,
+): Promise<string> {
+  return invoke('save_qa_baseline', { templateId, version, pages, sourceHash })
+}
+
+/** 读取视觉基线 */
+export function getQaBaseline(templateId: string, version: string): Promise<QaBaseline | null> {
+  return invoke('get_qa_baseline', { templateId, version })
 }
