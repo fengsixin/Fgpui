@@ -142,6 +142,28 @@ const importPreview = ref<ImportPreview | null>(null)
 const importSourceText = ref('')
 const importApplying = ref(false)
 
+/** 与当前数据的顶层字段对比（让用户亲眼确认修改被识别） */
+const importDiff = computed(() => {
+  const preview = importPreview.value
+  if (!preview) return []
+  const old = (store.current?.data ?? {}) as Record<string, unknown>
+  const keys = new Set([...Object.keys(old), ...Object.keys(preview.data)])
+  const rows: { key: string; kind: string; oldV: string; newV: string }[] = []
+  for (const key of keys) {
+    const oldText = JSON.stringify(old[key] ?? null)
+    const newText = JSON.stringify(preview.data[key] ?? null)
+    if (oldText !== newText) {
+      rows.push({
+        key,
+        kind: key in old ? '修改' : '新增',
+        oldV: oldText.length > 80 ? `${oldText.slice(0, 80)}…` : oldText,
+        newV: newText.length > 80 ? `${newText.slice(0, 80)}…` : newText,
+      })
+    }
+  }
+  return rows
+})
+
 async function pickAndImport(kind: 'excel' | 'json'): Promise<void> {
   if (!store.current) return
   const file = await openFileDialog({
@@ -500,6 +522,28 @@ const stateTagMap: Record<CompileState, string> = {
           </el-descriptions-item>
           <el-descriptions-item label="数据行">{{ importPreview.rows.length }}</el-descriptions-item>
         </el-descriptions>
+
+        <div class="imp-section">与当前数据的变更对比</div>
+        <el-alert
+          v-if="!importDiff.length"
+          type="info"
+          :closable="false"
+          title="导入内容与当前数据无差异"
+        />
+        <el-table v-else :data="importDiff" size="small" max-height="200">
+          <el-table-column prop="key" label="字段" width="140" />
+          <el-table-column label="类型" width="80">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.kind === '新增' ? 'success' : 'warning'">{{ row.kind }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="oldV" label="当前值">
+            <template #default="{ row }"><span class="mono">{{ row.oldV }}</span></template>
+          </el-table-column>
+          <el-table-column prop="newV" label="导入值">
+            <template #default="{ row }"><span class="mono">{{ row.newV }}</span></template>
+          </el-table-column>
+        </el-table>
 
         <template v-if="importPreview.columnPaths.length">
           <div class="imp-section">列映射</div>

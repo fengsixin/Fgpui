@@ -234,7 +234,22 @@ pub fn excel_import_core(
         sheet_issue(None, Some(col.clone()), None, "warning", format!("列「{col}」不在导入映射中，已忽略"));
     }
     if column_paths.is_empty() {
-        return Err(AppError::validation("没有任何列匹配导入映射，请检查表头列名（模板要求见 import-map.json）"));
+        // 诊断辅助：识别「整行表头粘贴进单个单元格」的常见误用
+        let first = sheet
+            .headers
+            .iter()
+            .map(|h| h.trim().to_string())
+            .find(|h| !h.is_empty())
+            .unwrap_or_default();
+        let hint = if first.contains(" | ") || first.contains("｜") || first.contains('\t') {
+            "检测到第一行是单个单元格且包含分隔符——像是把整行表头粘贴进了一个单元格。请每个列名各占一个单元格（A1=第一列，B1=第二列……）。"
+        } else {
+            "请检查表头拼写与模板要求一致。"
+        };
+        let expected = maps.iter().map(|m| m.column.as_str()).collect::<Vec<_>>().join("、");
+        return Err(AppError::validation(format!(
+            "没有任何列匹配导入映射。{hint}\n检测到的第一行内容：{first}\n模板要求的列名：{expected}"
+        )));
     }
 
     // 合并基础：现有数据（未映射字段保留）
