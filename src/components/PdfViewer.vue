@@ -66,7 +66,8 @@ async function load(path: string): Promise<void> {
 
     const host = container.value
     if (!host) {
-      stage.value = '容器未挂载'
+      // 正常不会发生（容器常驻）；防御性提示
+      stage.value = '容器未挂载（请反馈此问题）'
       return
     }
     host.innerHTML = ''
@@ -97,14 +98,15 @@ async function load(path: string): Promise<void> {
 
 <template>
   <div class="pdf-viewer">
-    <div v-if="loading" class="status">PDF 加载中…（{{ stage }}）</div>
+    <div v-if="!path" class="status">尚未生成 PDF——点击上方「生成 PDF」开始</div>
     <el-alert v-else-if="error" type="error" :title="`PDF 加载失败：${error}`" :closable="false" />
-    <div v-else-if="!path" class="status">尚未生成 PDF——点击上方「生成 PDF」开始</div>
     <template v-else>
       <div class="meta">
         共 {{ pageCount }} 页 · 预览比例 140%
-        <span class="diag">（{{ stage }}）</span>
+        <span class="diag">（{{ loading ? stage : '完成' }}）</span>
       </div>
+      <div v-if="loading" class="status">渲染中…（{{ stage }}）</div>
+      <!-- 容器始终挂载：渲染循环需要真实 DOM 节点 -->
       <div ref="container" class="pages"></div>
     </template>
   </div>
